@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>FJ</title>
+
+<style>
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    min-height: 100vh;
+    min-height: 100dvh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: #101827;
+    overflow: hidden;
+    font-family: Arial, sans-serif;
+}
+
+#fj {
+    font-size: clamp(150px, 38vw, 400px);
+    font-weight: 900;
+    letter-spacing: -15px;
+    color: white;
+    cursor: pointer;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    transition: color 0.35s ease, transform 0.2s ease;
+}
+
+#fj:active {
+    transform: scale(0.92);
+}
+</style>
+</head>
+
+<body>
+
+<div id="fj" role="button" tabindex="0"
+     aria-label="Tap to change FJ color">FJ</div>
+
+<script>
+const colors = [
+    "#ff0000",
+    "#00ff00",
+    "#0088ff",
+    "#ffff00",
+    "#ff00ff",
+    "#00ffff",
+    "#ff8800",
+    "#ffffff",
+    "#ff1493",
+    "#7fff00",
+    "#9400d3",
+    "#ffd700",
+    "#ff4500",
+    "#00ced1",
+    "#adff2f",
+    "#ff69b4",
+    "#7b68ee",
+    "#40e0d0"
+];
+
+const fj = document.getElementById("fj");
+
+function changeColor() {
+    let next;
+
+    do {
+        next = colors[Math.floor(Math.random() * colors.length)];
+    } while (next === fj.style.color);
+
+    fj.style.color = next;
+}
+
+fj.addEventListener("click", changeColor);
+
+fj.addEventListener("keydown", function(event) {
+    if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        changeColor();
+    }
+});
+</script>
+
+</body>
+</html>
