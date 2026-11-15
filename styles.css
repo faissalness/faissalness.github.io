@@ -16,7 +16,11 @@ button { width: fit-content; padding: .7rem 1rem; border: 0; border-radius: .5re
 button:focus-visible, a:focus-visible, input:focus-visible { outline: 3px solid #f5c96a; outline-offset: 3px; }
 .actions, .signed-in { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
 button.quiet { padding: .4rem 0; color: #a9c7ff; background: transparent; }
-.status { min-height: 1.5rem; }
+.status { min-height: 1.5rem; margin: 1rem 0 0; padding: .8rem 1rem; border: 1px solid #55709a; border-radius: .65rem; color: #edf4ff; background: #1b2a40; line-height: 1.5; overflow-wrap: anywhere; }
+.status[data-state="success"] { border-color: #3d8d72; background: #14362f; }
+.status[data-state="error"] { border-color: #aa5e64; background: #3a2028; }
+.status[data-state="info"] { border-color: #55709a; background: #1b2a40; }
+button:disabled { cursor: wait; opacity: .65; }
 .owner-panel { border-top: 1px solid #354157; padding-top: 1rem; }
 .request-row { display:flex; justify-content:space-between; align-items:center; gap:1rem; padding:.7rem 0; border-bottom:1px solid #29364c; overflow-wrap:anywhere; }
 .request-row button { flex: 0 0 auto; }
