@@ -2,7 +2,7 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn() { return request.auth != null; }
-    function owner() { return signedIn() && request.auth.uid == 'REPLACE_WITH_OWNER_UID'; }
+    function owner() { return signedIn() && request.auth.uid == 'hDbzbNTC7pOuU2UFCjFksopbgaG3'; }
     match /users/{uid} {
       allow create: if signedIn() && request.auth.uid == uid && request.resource.data.keys().hasOnly(['email', 'approved', 'createdAt']) && request.resource.data.approved == false;
       allow read: if signedIn() && (request.auth.uid == uid || owner());
