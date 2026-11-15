@@ -4,7 +4,7 @@ from pathlib import Path
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--url", default="https://faissalness.github.io/random.html?go=1")
+    parser.add_argument("--url", default="https://faissalness.github.io/random.html?random=1")
     parser.add_argument("--output", default="random-qr.png")
     args = parser.parse_args()
     try:

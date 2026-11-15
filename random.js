@@ -1,4 +1,13 @@
-const destinations = ["https://www.reddit.com/", "https://www.wikipedia.org/"];
 const params = new URLSearchParams(location.search);
-if (params.has("go")) location.replace(destinations[Math.random() < 0.5 ? 0 : 1]);
-else { const target = new URL("random.html?go=1", location.href).href; document.querySelector("#qr").src = `https://api.qrserver.com/v1/create-qr-code/?size=280x280&data=${encodeURIComponent(target)}`; }
+let destination;
+if (params.has("to")) {
+  const title = params.get("to").replaceAll(" ", "_");
+  destination = `https://en.wikipedia.org/wiki/${encodeURIComponent(title)}`;
+} else if (params.has("random") || params.has("go")) {
+  destination = "https://en.wikipedia.org/wiki/Special:Random";
+} else {
+  destination = "https://en.wikipedia.org/wiki/Special:Random";
+}
+const label = document.querySelector("#redirect-status");
+if (label) label.textContent = "Your random Wikipedia page is ready. Redirecting…";
+window.setTimeout(() => location.replace(destination), 140);
