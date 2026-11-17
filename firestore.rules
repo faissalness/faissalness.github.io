@@ -1,4 +1,5 @@
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -7,51 +8,98 @@ service cloud.firestore {
     }
 
     function owner() {
-      return signedIn() && request.auth.uid == 'hDbzbNTC7pOuU2UFCjFksopbgaG3';
+      return signedIn()
+        && request.auth.uid == 'hDbzbNTC7pOuU2UFCjFksopbgaG3';
     }
 
     function isActiveAdmin() {
       return signedIn()
-        && exists(/databases/$(database)/documents/admins/$(request.auth.uid))
-        && get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.active == true;
+        && exists(
+          /databases/$(database)/documents/admins/$(request.auth.uid)
+        )
+        && get(
+          /databases/$(database)/documents/admins/$(request.auth.uid)
+        ).data.active == true;
     }
 
-    // Owner and authorized active administrators check
-    function isAuthorizedNotesUser() {
+    function authorizedNotesUser() {
       return owner() || isActiveAdmin();
     }
 
-    // Admins collection: Only the owner can authorize or revoke administrators
+    // ADMINISTRATORS
+    // Only the owner can create, activate, deactivate or delete admins.
+    // An administrator can read only their own admin record.
     match /admins/{adminUid} {
-      allow read: if owner() || (signedIn() && request.auth.uid == adminUid);
+      allow read: if owner()
+        || (signedIn() && request.auth.uid == adminUid);
+
       allow create, update, delete: if owner();
     }
 
-    // PIN verifier records: Each user can only read and write their own security record
-    match /userSecurity/{uid} {
-      allow read, write: if signedIn() && request.auth.uid == uid && isAuthorizedNotesUser();
-    }
-
-    // Private owner-only and admin notes: Deny everyone else completely
+    // PRIVATE NOTES
+    // Owner and currently active administrators only.
     match /privateNotes/{noteId} {
-      allow read, write: if isAuthorizedNotesUser();
+      allow read, create, update, delete: if authorizedNotesUser();
     }
 
-    // Users collection for general site visitors
+    // OLD PIN RECORDS
+    // The PIN system is retired. No client may read or write these records.
+    match /userSecurity/{uid} {
+      allow read, write: if false;
+    }
+
+    // USER ACCOUNTS
+    // A user may create only their own unapproved profile.
+    // Only the owner may approve or remove users.
     match /users/{uid} {
-      allow create: if signedIn() && request.auth.uid == uid
+
+      allow create: if signedIn()
+        && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly([
+          'email',
+          'approved',
+          'createdAt'
+        ])
         && request.resource.data.approved == false;
-      allow read: if signedIn() && (request.auth.uid == uid || owner());
-      allow update: if owner() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['approved']);
+
+      allow read: if signedIn()
+        && (request.auth.uid == uid || owner());
+
+      allow update: if owner()
+        && request.resource.data.diff(resource.data)
+          .affectedKeys().hasOnly(['approved']);
+
       allow delete: if owner();
     }
 
-    // Access requests collection
+    // ACCESS REQUESTS
+    // Users can submit pending requests and read their own requests.
+    // Only the owner can review, approve, reject or delete requests.
     match /accessRequests/{requestId} {
-      allow create: if signedIn() && request.resource.data.uid == request.auth.uid;
-      allow read: if owner() || (signedIn() && resource.data.uid == request.auth.uid);
-      allow update: if owner();
+
+      allow create: if signedIn()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.status == 'pending'
+        && request.resource.data.keys().hasOnly([
+          'uid',
+          'email',
+          'status',
+          'createdAt'
+        ]);
+
+      allow read: if owner()
+        || (signedIn() && resource.data.uid == request.auth.uid);
+
+      allow update: if owner()
+        && request.resource.data.diff(resource.data)
+          .affectedKeys().hasOnly([
+            'status',
+            'reviewedAt'
+          ]);
+
       allow delete: if owner();
     }
+
+    // All other collections and documents are denied by default.
   }
 }

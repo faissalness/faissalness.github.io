@@ -1,5 +1,5 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
-import { getAuth, onAuthStateChanged, signOut, EmailAuthProvider, reauthenticateWithCredential } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 import { 
   getFirestore, doc, setDoc, getDoc, collection, query, where, orderBy, 
   onSnapshot, serverTimestamp, updateDoc, deleteDoc, getDocs 
@@ -14,16 +14,7 @@ const db = getFirestore(app);
 const $ = sel => document.querySelector(sel);
 const gate = $("#unauthorized-gate");
 const topbar = $("#topbar");
-const pinModal = $("#pin-modal");
-const pinForm = $("#pin-form");
-const pinInput = $("#pin-input");
-const pinConfirmGroup = $("#pin-confirm-group");
-const pinConfirmInput = $("#pin-confirm-input");
-const pinTitle = $("#pin-title");
-const pinDesc = $("#pin-desc");
-const pinStatus = $("#pin-status");
-const pinSubmitBtn = $("#pin-submit-btn");
-const pinResetBtn = $("#pin-reset-btn");
+
 const notesApp = $("#notes-app");
 const notesList = $("#notes-list");
 const noteForm = $("#note-form");
@@ -48,12 +39,7 @@ const adminsList = $("#admins-list");
 // State
 let currentUser = null;
 let isOwner = false;
-let userSecurityDoc = null;
-let isFirstTimeSetup = false;
-let isResettingPin = false;
-let pinUnlocked = false;
-let failedPinAttempts = 0;
-let lockoutTimer = null;
+
 let currentNoteId = null;
 let allNotes = [];
 let currentAttachments = []; // Array of { id, name, size, type, dataUrl }
@@ -116,255 +102,116 @@ async function deleteAttachmentFromIDB(id) {
   }
 }
 
-// Web Crypto PBKDF2-SHA256
-async function hashPin(pin, saltHex = null) {
-  const enc = new TextEncoder();
-  let salt;
-  if (saltHex) {
-    const match = saltHex.match(/.{1,2}/g) || [];
-    salt = new Uint8Array(match.map(byte => parseInt(byte, 16)));
-  } else {
-    salt = crypto.getRandomValues(new Uint8Array(16));
-    saltHex = Array.from(salt).map(b => b.toString(16).padStart(2, "0")).join("");
-  }
+// Firebase Authentication + Firestore Authorization Gate
+// Firestore rules independently enforce every private data operation.
 
-  const keyMaterial = await crypto.subtle.importKey(
-    "raw",
-    enc.encode(pin),
-    { name: "PBKDF2" },
-    false,
-    ["deriveBits"]
-  );
+let authCheckVersion = 0;
 
-  const derivedBits = await crypto.subtle.deriveBits(
-    {
-      name: "PBKDF2",
-      salt: salt,
-      iterations: 100000,
-      hash: "SHA-256"
-    },
-    keyMaterial,
-    256
-  );
+function clearPrivateNotesFromMemory() {
+  allNotes = [];
+  currentNoteId = null;
+  currentAttachments = [];
 
-  const hashHex = Array.from(new Uint8Array(derivedBits))
-    .map(b => b.toString(16).padStart(2, "0"))
-    .join("");
+  notesList.replaceChildren();
+  noteTitle.value = "";
+  noteTags.value = "";
+  noteContent.value = "";
 
-  return { hashHex, saltHex };
+  renderAttachmentsGallery();
 }
 
-// Initial Authentication and Authorization Gate
-onAuthStateChanged(auth, async user => {
-  if (!user) {
-    // Unauthenticated: Keep displaying "you cannot come in here"
-    gate.hidden = false;
-    topbar.hidden = true;
-    pinModal.hidden = true;
-    notesApp.hidden = true;
-    return;
+async function denyCurrentSession() {
+  currentUser = null;
+  isOwner = false;
+
+  if (unsubscribeNotes) {
+    unsubscribeNotes();
+    unsubscribeNotes = null;
   }
 
-  currentUser = user;
-  isOwner = (user.uid === ownerUid);
+  clearPrivateNotesFromMemory();
+
+  gate.hidden = false;
+  topbar.hidden = true;
+  notesApp.hidden = true;
+  manageAdminsBtn.hidden = true;
+  adminDrawer.hidden = true;
 
   try {
-    // Check if user is owner or active administrator
-    let authorized = isOwner;
-    if (!authorized) {
-      const adminDoc = await getDoc(doc(db, "admins", user.uid));
-      if (adminDoc.exists() && adminDoc.data().active === true) {
-        authorized = true;
-      }
-    }
-
-    if (!authorized) {
-      // Unauthorized: strictly deny and sign out
-      await signOut(auth);
-      gate.hidden = false;
-      topbar.hidden = true;
-      pinModal.hidden = true;
-      notesApp.hidden = true;
-      return;
-    }
-
-    // Authenticated and Authorized: reveal navigation and prepare PIN
-    topbar.hidden = false;
-    gate.hidden = true;
-
-    // Check user's individual security/PIN record in Firestore
-    const secDocSnap = await getDoc(doc(db, "userSecurity", user.uid));
-    if (!secDocSnap.exists()) {
-      // First-time PIN setup
-      isFirstTimeSetup = true;
-      pinTitle.textContent = "Configure 6-digit PIN";
-      pinDesc.textContent = "First-time setup: choose a secure 6-digit PIN for note access.";
-      pinConfirmGroup.hidden = false;
-      pinConfirmInput.required = true;
-      pinSubmitBtn.innerHTML = "Save PIN <span>↗</span>";
-      pinResetBtn.hidden = true;
-    } else {
-      // Returning user
-      isFirstTimeSetup = false;
-      userSecurityDoc = secDocSnap.data();
-      pinTitle.textContent = "Enter 6-digit PIN";
-      pinDesc.textContent = "Enter your personal 6-digit PIN to unlock your private notes.";
-      pinConfirmGroup.hidden = true;
-      pinConfirmInput.required = false;
-      pinSubmitBtn.innerHTML = "Unlock <span>↗</span>";
-      pinResetBtn.hidden = false;
-    }
-
-    if (!pinUnlocked) {
-      pinModal.hidden = false;
-      pinInput.value = "";
-      pinConfirmInput.value = "";
-      pinInput.focus();
-    }
-  } catch (error) {
-    console.error("Authorization check failed:", error);
     await signOut(auth);
-    gate.hidden = false;
-    topbar.hidden = true;
-    pinModal.hidden = true;
-    notesApp.hidden = true;
+  } catch (error) {
+    console.error("Sign-out after authorization failure:", error);
   }
-});
+}
 
-// PIN Form Submission
-pinForm.addEventListener("submit", async event => {
-  event.preventDefault();
-  if (lockoutTimer) return;
+onAuthStateChanged(auth, async user => {
+  const checkVersion = ++authCheckVersion;
 
-  const pin = pinInput.value.trim();
-  if (!/^\d{6}$/.test(pin)) {
-    showPinStatus("PIN must be exactly 6 numeric digits.", "error");
+  if (unsubscribeNotes) {
+    unsubscribeNotes();
+    unsubscribeNotes = null;
+  }
+
+  currentUser = null;
+  isOwner = false;
+
+  clearPrivateNotesFromMemory();
+
+  gate.hidden = false;
+  topbar.hidden = true;
+  notesApp.hidden = true;
+  manageAdminsBtn.hidden = true;
+  adminDrawer.hidden = true;
+
+  if (!user) {
     return;
   }
 
-  pinSubmitBtn.disabled = true;
-
-  if (isFirstTimeSetup || isResettingPin) {
-    const confirm = pinConfirmInput.value.trim();
-    if (pin !== confirm) {
-      showPinStatus("The two PIN entries do not match. Try again.", "error");
-      pinSubmitBtn.disabled = false;
-      return;
-    }
-
-    showPinStatus("Configuring your secure PIN…", "info");
-    try {
-      const { hashHex, saltHex } = await hashPin(pin);
-      await setDoc(doc(db, "userSecurity", currentUser.uid), {
-        uid: currentUser.uid,
-        pinHash: hashHex,
-        salt: saltHex,
-        updatedAt: serverTimestamp()
-      });
-
-      userSecurityDoc = { pinHash: hashHex, salt: saltHex };
-      isFirstTimeSetup = false;
-      isResettingPin = false;
-      showPinStatus("PIN configured successfully. Unlocking…", "success");
-      setTimeout(unlockNotesApp, 400);
-    } catch (err) {
-      showPinStatus(`Could not save PIN: ${err.message}`, "error");
-    } finally {
-      pinSubmitBtn.disabled = false;
-    }
-  } else {
-    // Verification
-    if (!userSecurityDoc || !userSecurityDoc.salt || !userSecurityDoc.pinHash) {
-      showPinStatus("Security record missing. Please re-authenticate.", "error");
-      pinSubmitBtn.disabled = false;
-      return;
-    }
-
-    try {
-      const { hashHex } = await hashPin(pin, userSecurityDoc.salt);
-      if (hashHex === userSecurityDoc.pinHash) {
-        failedPinAttempts = 0;
-        showPinStatus("PIN verified. Unlocking…", "success");
-        setTimeout(unlockNotesApp, 300);
-      } else {
-        failedPinAttempts += 1;
-        pinInput.value = "";
-        pinInput.focus();
-        if (failedPinAttempts >= 5) {
-          enforceLockout(30);
-        } else {
-          showPinStatus(`Incorrect PIN. ${5 - failedPinAttempts} attempts remaining before temporary lockout.`, "error");
-        }
-      }
-    } catch (err) {
-      showPinStatus(`Verification error: ${err.message}`, "error");
-    } finally {
-      pinSubmitBtn.disabled = false;
-    }
-  }
-});
-
-function enforceLockout(seconds) {
-  let remaining = seconds;
-  pinSubmitBtn.disabled = true;
-  showPinStatus(`Too many failed attempts. Locked out for ${remaining}s.`, "error");
-
-  lockoutTimer = setInterval(() => {
-    remaining -= 1;
-    if (remaining <= 0) {
-      clearInterval(lockoutTimer);
-      lockoutTimer = null;
-      failedPinAttempts = 0;
-      pinSubmitBtn.disabled = false;
-      showPinStatus("Lockout cleared. Please enter your PIN.", "info");
-    } else {
-      showPinStatus(`Too many failed attempts. Locked out for ${remaining}s.`, "error");
-    }
-  }, 1000);
-}
-
-function showPinStatus(msg, state = "info") {
-  pinStatus.textContent = msg;
-  pinStatus.dataset.state = state;
-}
-
-// Secure PIN Change / Reset (Requires re-authentication)
-pinResetBtn.addEventListener("click", async () => {
-  const password = prompt("Re-enter your account password to verify identity before changing PIN:");
-  if (!password) return;
-
   try {
-    const cred = EmailAuthProvider.credential(currentUser.email, password);
-    await reauthenticateWithCredential(currentUser, cred);
+    const ownerAccess = user.uid === ownerUid;
+    let authorized = ownerAccess;
 
-    isResettingPin = true;
-    pinTitle.textContent = "Change 6-digit PIN";
-    pinDesc.textContent = "Identity confirmed. Enter your new 6-digit PIN twice:";
-    pinConfirmGroup.hidden = false;
-    pinConfirmInput.required = true;
-    pinInput.value = "";
-    pinConfirmInput.value = "";
-    pinSubmitBtn.innerHTML = "Update PIN <span>↗</span>";
-    pinResetBtn.hidden = true;
-    showPinStatus("Enter your new 6-digit PIN.", "info");
-  } catch (err) {
-    alert(`Authentication failed: ${err.message}`);
+    if (!authorized) {
+      // An administrator must have their own active admin document.
+      const adminSnap = await getDoc(doc(db, "admins", user.uid));
+
+      if (checkVersion !== authCheckVersion) return;
+
+      authorized =
+        adminSnap.exists() &&
+        adminSnap.data().active === true;
+    }
+
+    if (checkVersion !== authCheckVersion) return;
+
+    if (!authorized) {
+      await denyCurrentSession();
+      return;
+    }
+
+    // Only set the application user after authorization succeeds.
+    currentUser = user;
+    isOwner = ownerAccess;
+
+    gate.hidden = true;
+    topbar.hidden = false;
+    notesApp.hidden = false;
+
+    // Administrators cannot manage other administrators.
+    manageAdminsBtn.hidden = !isOwner;
+
+    notesApp.classList.add("home-reveal");
+
+    initNotesRealtime();
+
+  } catch (error) {
+    if (checkVersion !== authCheckVersion) return;
+
+    console.error("Authorization check failed:", error);
+
+    await denyCurrentSession();
   }
 });
-
-function unlockNotesApp() {
-  pinUnlocked = true;
-  pinModal.hidden = true;
-  notesApp.hidden = false;
-  notesApp.classList.add("home-reveal");
-
-  if (isOwner) {
-    manageAdminsBtn.hidden = false;
-  }
-
-  initNotesRealtime();
-}
-
 // Notes CRUD & Realtime Listener
 function initNotesRealtime() {
   if (unsubscribeNotes) unsubscribeNotes();
@@ -386,7 +233,15 @@ function initNotesRealtime() {
     }
   }, err => {
     console.error("Firestore notes read denied or error:", err);
-    $("#storage-status-text").textContent = "Read restricted by Firestore rules";
+
+    if (err.code === "permission-denied") {
+      console.error("Firestore authorization was revoked or denied.");
+      denyCurrentSession();
+      return;
+    }
+
+    $("#storage-status-text").textContent =
+      "Firestore connection error";
   });
 }
 

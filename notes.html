@@ -24,34 +24,6 @@
     <p id="gate-text">you cannot come in here</p>
   </div>
 
-  <!-- PIN Modal for Setup, Unlock, and Reset -->
-  <div id="pin-modal" class="pin-modal" hidden>
-    <div class="pin-card">
-      <p class="eyebrow" id="pin-card-eyebrow">SECURITY / PIN LOCK</p>
-      <h2 id="pin-title">Enter 6-digit PIN</h2>
-      <p class="pin-desc" id="pin-desc">Authenticate your identity to access private notes.</p>
-      
-      <form id="pin-form" class="pin-form">
-        <div class="pin-field-group">
-          <label for="pin-input" id="pin-label">PIN</label>
-          <input type="password" id="pin-input" maxlength="6" pattern="[0-9]{6}" inputmode="numeric" autocomplete="one-time-code" placeholder="••••••" required>
-        </div>
-
-        <div class="pin-field-group" id="pin-confirm-group" hidden>
-          <label for="pin-confirm-input">Confirm PIN</label>
-          <input type="password" id="pin-confirm-input" maxlength="6" pattern="[0-9]{6}" inputmode="numeric" autocomplete="one-time-code" placeholder="••••••">
-        </div>
-
-        <div class="pin-actions">
-          <button type="submit" id="pin-submit-btn" class="primary-button">Unlock <span>↗</span></button>
-          <button type="button" id="pin-reset-btn" class="text-button" hidden>Change PIN</button>
-        </div>
-
-        <p id="pin-status" class="inline-status" role="status" aria-live="polite"></p>
-      </form>
-    </div>
-  </div>
-
   <!-- Main Protected Notes Section -->
   <main id="notes-app" class="protected-page notes-page" hidden>
     <div class="notes-layout">
@@ -149,6 +121,6 @@
     </footer>
   </main>
 
-  <script type="module" src="notes.js?v=20261115-3"></script>
+  <script type="module" src="notes.js?v=20261117-owner-admin-1"></script>
 </body>
 </html>
