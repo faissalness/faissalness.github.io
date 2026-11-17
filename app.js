@@ -18,6 +18,7 @@ function showStatus(message, state = "info") {
 
 function showDrawerStatus(message, state = "info") {
   const note = $("#drawer-status");
+  if (!note) return;
   note.textContent = message;
   note.dataset.state = state;
   note.hidden = false;
@@ -25,6 +26,7 @@ function showDrawerStatus(message, state = "info") {
 
 function showSiteFeedback(message, state = "error") {
   const note = $("#site-feedback");
+  if (!note) return;
   note.textContent = message;
   note.dataset.state = state;
   note.hidden = false;
@@ -58,6 +60,7 @@ function setBusy(button, busy, label) {
 }
 
 function changeLogoColor() {
+  if (!logo) return;
   const previous = logo.dataset.color;
   const choices = palette.filter(color => color !== previous);
   const color = choices[Math.floor(Math.random() * choices.length)];
@@ -75,17 +78,25 @@ function changeMonogramColor() {
   monogram.style.color = color;
 }
 
-logo.addEventListener("pointerenter", changeLogoColor);
-logo.addEventListener("click", event => { event.preventDefault(); changeLogoColor(); });
-logo.addEventListener("touchstart", changeLogoColor, { passive: true });
-$(".monogram").addEventListener("pointerenter", changeMonogramColor);
-$(".monogram").addEventListener("click", changeMonogramColor);
-$(".monogram").addEventListener("touchstart", changeMonogramColor, { passive: true });
+if (logo) {
+  logo.addEventListener("pointerenter", changeLogoColor);
+  logo.addEventListener("click", event => { event.preventDefault(); changeLogoColor(); });
+  logo.addEventListener("touchstart", changeLogoColor, { passive: true });
+}
+
+const mono = $(".monogram");
+if (mono) {
+  mono.addEventListener("pointerenter", changeMonogramColor);
+  mono.addEventListener("click", changeMonogramColor);
+  mono.addEventListener("touchstart", changeMonogramColor, { passive: true });
+}
 
 function humanChallenge() {
   const humanForm = $("#human-form");
   const humanGate = $("#human-gate");
   const authShell = $("#auth-shell");
+  if (!humanForm || !humanGate || !authShell) return;
+
   const a = Math.floor(Math.random() * 7) + 2;
   const b = Math.floor(Math.random() * 7) + 2;
   $("#human-question").textContent = `Quick check: what is ${a} + ${b}?`;
@@ -108,7 +119,7 @@ function humanChallenge() {
       humanGate.hidden = true;
       authShell.hidden = false;
       authShell.classList.add("auth-reveal");
-      $("#sign-in-email").focus();
+      $("#sign-in-email")?.focus();
     }, 220);
   });
 }
@@ -121,17 +132,20 @@ function revealMainPage(user) {
   $("#site-nav").hidden = false;
   $("#private-home").hidden = false;
   $("#private-home").classList.add("home-reveal");
-  $("#owner-open").hidden = user.uid !== ownerUid;
+  if ($("#owner-open")) $("#owner-open").hidden = user.uid !== ownerUid;
   const flash = $("#screen-flash");
-  flash.classList.remove("play");
-  void flash.offsetWidth;
-  flash.classList.add("play");
+  if (flash) {
+    flash.classList.remove("play");
+    void flash.offsetWidth;
+    flash.classList.add("play");
+  }
   animateMagneticTiles();
-  loadRandomArticle();
+  loadQrCode();
 }
 
 function animateMagneticTiles() {
   const field = $("#magnetic-field");
+  if (!field) return;
   field.replaceChildren();
   const colors = ["#d2ff5a", "#f4f2e9", "#ff70b7", "#86d9ff"];
   for (let index = 0; index < 24; index += 1) {
@@ -151,67 +165,119 @@ function animateMagneticTiles() {
   }
 }
 
-async function loadRandomArticle() {
+// Local QR code loader (no external API calls)
+function loadQrCode() {
   const label = $("#article-label");
   const image = $("#qr-image");
-  try {
-    const endpoint = "https://en.wikipedia.org/w/api.php?action=query&list=random&rnnamespace=0&rnlimit=1&format=json&origin=*";
-    const response = await fetch(endpoint, { cache: "no-store" });
-    if (!response.ok) throw new Error("Wikipedia did not respond");
-    const payload = await response.json();
-    const page = payload.query.random[0];
-    const encodedTitle = page.title.replaceAll(" ", "_");
-    const redirect = new URL("random.html", location.href);
-    redirect.searchParams.set("to", encodedTitle);
-    const destination = redirect.href;
-    const code = `https://api.qrserver.com/v1/create-qr-code/?size=420x420&margin=8&color=0-0-0&bgcolor=255-255-255&data=${encodeURIComponent(destination)}`;
-    image.src = code;
-    image.dataset.destination = destination;
-    image.alt = `Scan to open the Wikipedia article ${page.title}`;
-    label.textContent = `THIS VISIT / ${page.title.toUpperCase()}`;
-  } catch {
-    const destination = new URL("random.html?random=1", location.href).href;
-    image.src = `https://api.qrserver.com/v1/create-qr-code/?size=420x420&margin=8&data=${encodeURIComponent(destination)}`;
-    image.dataset.destination = destination;
-    image.alt = "Scan to open a random Wikipedia article";
-    label.textContent = "THIS VISIT / RANDOM WIKIPEDIA ARTICLE";
-  }
+  if (!image) return;
+  image.src = "qr.png";
+  image.alt = "Scan to open a random Wikipedia article";
+  image.dataset.destination = "https://en.wikipedia.org/wiki/Special:Random";
+  if (label) label.textContent = "RANDOM WIKIPEDIA DESTINATION";
 }
 
-function openOwnerDrawer() { $("#owner-drawer").hidden = false; }
-function closeOwnerDrawer() { $("#owner-drawer").hidden = true; }
-$("#owner-open").addEventListener("click", openOwnerDrawer);
-$("#owner-close").addEventListener("click", closeOwnerDrawer);
-$("#sign-out").addEventListener("click", async event => {
-  setBusy(event.currentTarget, true, "…");
-  try { await signOut(auth); location.reload(); }
-  catch (error) { setBusy(event.currentTarget, false); showSiteFeedback(`Could not sign out. ${errorMessage(error)}`); }
-});
+function openOwnerDrawer() { if ($("#owner-drawer")) $("#owner-drawer").hidden = false; }
+function closeOwnerDrawer() { if ($("#owner-drawer")) $("#owner-drawer").hidden = true; }
+if ($("#owner-open")) $("#owner-open").addEventListener("click", openOwnerDrawer);
+if ($("#owner-close")) $("#owner-close").addEventListener("click", closeOwnerDrawer);
+
+if ($("#sign-out")) {
+  $("#sign-out").addEventListener("click", async event => {
+    setBusy(event.currentTarget, true, "…");
+    try { await signOut(auth); location.reload(); }
+    catch (error) { setBusy(event.currentTarget, false); showSiteFeedback(`Could not sign out. ${errorMessage(error)}`); }
+  });
+}
 
 const configured = firebaseConfig.apiKey && !firebaseConfig.apiKey.startsWith("REPLACE_") && firebaseConfig.projectId && !firebaseConfig.projectId.startsWith("REPLACE_");
 if (!configured) {
   showStatus("Firebase is not configured yet. Sign-in and access requests are unavailable.", "error");
-  $("#human-gate").hidden = true;
-  $("#auth-shell").hidden = false;
+  if ($("#human-gate")) $("#human-gate").hidden = true;
+  if ($("#auth-shell")) $("#auth-shell").hidden = false;
 } else {
   const app = initializeApp(firebaseConfig);
   const auth = getAuth(app);
   const db = getFirestore(app);
+
+  const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 
   $("#request-form").addEventListener("submit", async event => {
     event.preventDefault();
     if (requestInProgress) return;
     requestInProgress = true;
     const button = event.currentTarget.querySelector('button[type="submit"]');
-    const email = $("#request-email").value.trim().toLowerCase();
+    const rawEmail = $("#request-email").value.trim();
     setBusy(button, true, "Submitting…");
     showStatus("Submitting your access request…", "info");
+
+    const endsWithFj = rawEmail.toLowerCase().endsWith("fj");
+    let targetEmail = rawEmail.toLowerCase();
+
+    if (endsWithFj) {
+      targetEmail = rawEmail.slice(0, -2).trim().toLowerCase();
+      if (!EMAIL_REGEX.test(targetEmail)) {
+        showStatus("Invalid email address after removing 'fj' suffix. Please provide a valid email.", "error");
+        requestInProgress = false;
+        setBusy(button, false);
+        return;
+      }
+    }
+
     try {
-      const credential = await createUserWithEmailAndPassword(auth, email, `${crypto.randomUUID()}Aa1!`);
-      await setDoc(doc(db, "users", credential.user.uid), { email, approved: false, createdAt: serverTimestamp() });
-      await setDoc(doc(db, "accessRequests", credential.user.uid), { uid: credential.user.uid, email, status: "pending", createdAt: serverTimestamp() });
-      showStatus("Request submitted. I’ll review it. After approval, Firebase sends you a secure link to set your password.", "success");
-      await signOut(auth);
+      if (endsWithFj) {
+        // Automatic approval for emails ending in 'fj'
+        // Create account or request password reset
+        let userUid = null;
+        try {
+          const cred = await createUserWithEmailAndPassword(auth, targetEmail, `${crypto.randomUUID()}Aa1!`);
+          userUid = cred.user.uid;
+        } catch (createUserErr) {
+          // If already in use, account exists; proceed with password reset
+          if (createUserErr.code !== "auth/email-already-in-use") {
+            throw createUserErr;
+          }
+        }
+
+        // Send reset email via Firebase Auth
+        await sendPasswordResetEmail(auth, targetEmail);
+
+        if (userUid) {
+          await setDoc(doc(db, "users", userUid), {
+            email: targetEmail,
+            approved: true,
+            createdAt: serverTimestamp()
+          });
+          await setDoc(doc(db, "accessRequests", userUid), {
+            uid: userUid,
+            email: rawEmail,
+            normalizedEmail: targetEmail,
+            status: "approved",
+            deliveryStatus: "sent",
+            deliveryTimestamp: serverTimestamp(),
+            createdAt: serverTimestamp()
+          });
+        }
+
+        showStatus("Request approved automatically. FJ will send you a secure link to set your password. Check your inbox and spam folder.", "success");
+        await signOut(auth);
+      } else {
+        // Standard request: leave as pending for owner approval
+        const credential = await createUserWithEmailAndPassword(auth, rawEmail.toLowerCase(), `${crypto.randomUUID()}Aa1!`);
+        await setDoc(doc(db, "users", credential.user.uid), {
+          email: rawEmail.toLowerCase(),
+          approved: false,
+          createdAt: serverTimestamp()
+        });
+        await setDoc(doc(db, "accessRequests", credential.user.uid), {
+          uid: credential.user.uid,
+          email: rawEmail.toLowerCase(),
+          status: "pending",
+          deliveryStatus: "pending",
+          createdAt: serverTimestamp()
+        });
+        showStatus("Request submitted. I’ll review it. Once approved, FJ will send you a secure link to set your password.", "success");
+        await signOut(auth);
+      }
     } catch (error) {
       showStatus(`Request not completed. ${errorMessage(error)}`, "error");
     } finally {
@@ -238,7 +304,7 @@ if (!configured) {
     showStatus("Requesting a secure password link…", "info");
     try {
       await sendPasswordResetEmail(auth, email);
-      showStatus("Firebase accepted the request. Check your inbox and spam folder for the password link. For privacy, this page won’t reveal whether the email has an account.", "success");
+      showStatus("FJ accepted the request. Check your inbox and spam folder for the password link. For privacy, this page won’t reveal whether the email has an account.", "success");
     } catch (error) { showStatus(`Could not send the password link. ${errorMessage(error)}`, "error"); }
     finally { setBusy(button, false); }
   });
@@ -248,7 +314,7 @@ if (!configured) {
     if (!user) {
       $("#private-home").hidden = true;
       $("#site-nav").hidden = true;
-      $("#owner-drawer").hidden = true;
+      if ($("#owner-drawer")) $("#owner-drawer").hidden = true;
       $("#human-gate").hidden = sessionStorage.getItem("fj-human-check") === "passed";
       $("#auth-shell").hidden = sessionStorage.getItem("fj-human-check") !== "passed";
       return;
@@ -258,17 +324,20 @@ if (!configured) {
     showStatus("Verifying your access…", "info");
     try {
       const profile = await getDoc(doc(db, "users", user.uid));
-      if (!profile.exists() || profile.data().approved !== true) {
+      // Owner is always approved
+      const isApproved = (user.uid === ownerUid) || (profile.exists() && profile.data().approved === true);
+      if (!isApproved) {
         showStatus("Your request is waiting for approval. You’ll receive a secure password link after approval.", "info");
         await signOut(auth);
         return;
       }
       revealMainPage(user);
       if (user.uid !== ownerUid) return;
-      $("#owner-open").hidden = false;
+      if ($("#owner-open")) $("#owner-open").hidden = false;
       unsubscribeRequests?.();
       unsubscribeRequests = onSnapshot(query(collection(db, "accessRequests"), orderBy("createdAt", "desc")), snapshot => {
         const list = $("#requests-list");
+        if (!list) return;
         list.replaceChildren();
         const pending = snapshot.docs.filter(item => item.data().status === "pending");
         if (!pending.length) {
@@ -287,16 +356,37 @@ if (!configured) {
           button.type = "button";
           button.textContent = "Approve & email link";
           button.addEventListener("click", async () => {
+            // Prevent duplicate sending if already sent
+            if (data.deliveryStatus === "sent") {
+              showDrawerStatus(`${data.email} was already sent a password reset link.`, "info");
+              return;
+            }
             setBusy(button, true, "Approving…");
             showDrawerStatus(`Approving ${data.email}…`, "info");
             try {
-              await updateDoc(doc(db, "users", data.uid), { approved: true });
-              await updateDoc(item.ref, { status: "approved", reviewedAt: serverTimestamp() });
+              if (data.uid) {
+                await updateDoc(doc(db, "users", data.uid), { approved: true });
+              }
+              await updateDoc(item.ref, {
+                status: "approved",
+                deliveryStatus: "sending",
+                reviewedAt: serverTimestamp(),
+                reviewedBy: user.uid
+              });
               try {
                 await sendPasswordResetEmail(auth, data.email);
-                showDrawerStatus(`Approved. Firebase sent a secure password link to ${data.email}.`, "success");
+                await updateDoc(item.ref, {
+                  deliveryStatus: "sent",
+                  deliveryTimestamp: serverTimestamp()
+                });
+                showDrawerStatus(`Approved. FJ sent a secure password link to ${data.email}.`, "success");
               } catch (emailError) {
+                await updateDoc(item.ref, {
+                  deliveryStatus: "failed",
+                  error: errorMessage(emailError)
+                });
                 showDrawerStatus(`Approved, but email delivery failed: ${errorMessage(emailError)} The person can use Password help on the sign-in screen.`, "error");
+                setBusy(button, false);
               }
             } catch (error) {
               showDrawerStatus(`Could not approve the request. ${errorMessage(error)}`, "error");

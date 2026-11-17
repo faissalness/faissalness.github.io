@@ -14,6 +14,7 @@
     <nav id="site-nav" class="site-nav" aria-label="Private pages" hidden>
       <a href="meet.html">Meet me <span>01</span></a>
       <a href="gods.html">To the gods <span>02</span></a>
+      <a href="notes.html">Notes <span>03</span></a>
       <button class="icon-button" id="owner-open" type="button" aria-label="Review access requests" title="Review access requests" hidden>↗</button>
       <button class="icon-button signout" id="sign-out" type="button" aria-label="Sign out" title="Sign out">⇥</button>
     </nav>
@@ -43,7 +44,7 @@
           <button class="primary-button" type="submit">Sign in <span>↗</span></button>
         </form>
         <aside class="auth-card request-card">
-          <p class="card-index">02 / FIRST VISIT</p><h2>Request access</h2><p class="card-copy">I’ll review your request. Once approved, Firebase emails you a secure link to set a password.</p>
+          <p class="card-index">02 / FIRST VISIT</p><h2>Request access</h2><p class="card-copy">I’ll review your request. Once approved, FJ will send you a secure link to set your password.</p>
           <form id="request-form" class="compact-form"><label for="request-email">Email</label><input id="request-email" type="email" autocomplete="email" required><button class="text-button" type="submit">Request access <span>↗</span></button></form>
           <form id="reset-form" class="compact-form reset-form"><label for="reset-email">Password help</label><input id="reset-email" type="email" autocomplete="email" placeholder="Email for a reset link" required><button class="text-button" type="submit">Send password link <span>↗</span></button></form>
         </aside>
@@ -56,13 +57,13 @@
         <p class="eyebrow">FJ / PRIVATE FREQUENCY <span class="live-dot"></span> ONLINE</p>
         <h1 id="hero-title">A small signal<br><span>in a large world.</span></h1>
         <p class="hero-intro">A personal corner for curious things, new directions, and the occasional detour.</p>
-        <div class="hero-links"><a href="meet.html">Meet me <span>↗</span></a><a href="gods.html">To the gods <span>↗</span></a></div>
-        <p class="article-label" id="article-label">TUNING TO A RANDOM WIKIPEDIA PAGE…</p>
+        <div class="hero-links"><a href="meet.html">Meet me <span>↗</span></a><a href="gods.html">To the gods <span>↗</span></a><a href="notes.html">Notes <span>↗</span></a></div>
+        <p class="article-label" id="article-label">RANDOM WIKIPEDIA DESTINATION</p>
       </div>
       <div class="mark-stage" id="mark-stage" aria-label="FJ monogram with a QR code to a random Wikipedia article">
         <div class="magnetic-field" id="magnetic-field" aria-hidden="true"></div>
         <div class="monogram" aria-hidden="true"><span>F</span><span>J</span></div>
-        <div class="qr-dock" id="qr-dock"><img id="qr-image" alt="Scan to open this visit’s random Wikipedia article"><span class="qr-caption">SCAN / WIKIPEDIA</span></div>
+        <div class="qr-dock" id="qr-dock"><img id="qr-image" src="qr.png" alt="Scan to open a random Wikipedia article"><span class="qr-caption">SCAN / WIKIPEDIA</span></div>
         <p class="stage-coordinate">59°19′N&nbsp;&nbsp;18°04′E <span>FJ—01</span></p>
       </div>
     </section>

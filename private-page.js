@@ -5,15 +5,20 @@ import { firebaseConfig } from "./firebase-config.js";
 
 const mark = document.querySelector("#fj");
 const colors = ["#d2ff5a", "#ff70b7", "#86d9ff", "#f3f2ee", "#c6a7ff"];
-function recolor() { mark.style.color = colors[Math.floor(Math.random() * colors.length)]; }
-mark.addEventListener("pointerenter", recolor);
-mark.addEventListener("touchstart", recolor, { passive: true });
+function recolor() { if (mark) mark.style.color = colors[Math.floor(Math.random() * colors.length)]; }
+if (mark) {
+  mark.addEventListener("pointerenter", recolor);
+  mark.addEventListener("touchstart", recolor, { passive: true });
+}
 
-document.querySelector("#sign-out").addEventListener("click", async event => {
-  event.currentTarget.disabled = true;
-  await signOut(auth);
-  location.replace("index.html");
-});
+const signoutBtn = document.querySelector("#sign-out");
+if (signoutBtn) {
+  signoutBtn.addEventListener("click", async event => {
+    event.currentTarget.disabled = true;
+    await signOut(auth);
+    location.replace("index.html");
+  });
+}
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -23,9 +28,13 @@ onAuthStateChanged(auth, async user => {
   try {
     const profile = await getDoc(doc(db, "users", user.uid));
     if (!profile.exists() || profile.data().approved !== true) { await signOut(auth); location.replace("index.html"); return; }
-    document.querySelector("#site-nav").hidden = false;
-    document.querySelector("#protected-content").hidden = false;
-    document.querySelector("#protected-content").classList.add("home-reveal");
+    const siteNav = document.querySelector("#site-nav");
+    if (siteNav) siteNav.hidden = false;
+    const content = document.querySelector("#protected-content");
+    if (content) {
+      content.hidden = false;
+      content.classList.add("home-reveal");
+    }
   } catch {
     await signOut(auth);
     location.replace("index.html");

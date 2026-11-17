@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#020203">
+  <meta name="description" content="Private owner-only notes.">
+  <title>Notes — FJ</title>
+  <link rel="stylesheet" href="styles.css?v=20261115-3">
+</head>
+<body class="site-body">
+  <header class="topbar" id="topbar" hidden>
+    <a class="site-mark" id="fj" href="index.html" aria-label="FJ home">FJ</a>
+    <nav id="site-nav" class="site-nav" aria-label="Private pages">
+      <a href="meet.html">Meet me <span>01</span></a>
+      <a href="gods.html">To the gods <span>02</span></a>
+      <a href="notes.html" aria-current="page">Notes <span>03</span></a>
+      <button class="icon-button signout" id="sign-out" type="button" aria-label="Sign out" title="Sign out">⇥</button>
+    </nav>
+  </header>
+
+  <!-- Initial mandatory gate text: exactly "you cannot come in here" -->
+  <div id="unauthorized-gate" class="gate-forbidden">
+    <p id="gate-text">you cannot come in here</p>
+  </div>
+
+  <!-- PIN Modal for Setup, Unlock, and Reset -->
+  <div id="pin-modal" class="pin-modal" hidden>
+    <div class="pin-card">
+      <p class="eyebrow" id="pin-card-eyebrow">SECURITY / PIN LOCK</p>
+      <h2 id="pin-title">Enter 6-digit PIN</h2>
+      <p class="pin-desc" id="pin-desc">Authenticate your identity to access private notes.</p>
+      
+      <form id="pin-form" class="pin-form">
+        <div class="pin-field-group">
+          <label for="pin-input" id="pin-label">PIN</label>
+          <input type="password" id="pin-input" maxlength="6" pattern="[0-9]{6}" inputmode="numeric" autocomplete="one-time-code" placeholder="••••••" required>
+        </div>
+
+        <div class="pin-field-group" id="pin-confirm-group" hidden>
+          <label for="pin-confirm-input">Confirm PIN</label>
+          <input type="password" id="pin-confirm-input" maxlength="6" pattern="[0-9]{6}" inputmode="numeric" autocomplete="one-time-code" placeholder="••••••">
+        </div>
+
+        <div class="pin-actions">
+          <button type="submit" id="pin-submit-btn" class="primary-button">Unlock <span>↗</span></button>
+          <button type="button" id="pin-reset-btn" class="text-button" hidden>Change PIN</button>
+        </div>
+
+        <p id="pin-status" class="inline-status" role="status" aria-live="polite"></p>
+      </form>
+    </div>
+  </div>
+
+  <!-- Main Protected Notes Section -->
+  <main id="notes-app" class="protected-page notes-page" hidden>
+    <div class="notes-layout">
+      <!-- Sidebar / Notes List -->
+      <aside class="notes-sidebar">
+        <div class="sidebar-header">
+          <div>
+            <p class="page-kicker">FJ / PRIVATE NOTES</p>
+            <h1>Notes<span>.</span></h1>
+          </div>
+          <button type="button" id="new-note-btn" class="primary-button compact-btn" title="Create a new note">+ New note</button>
+        </div>
+
+        <div class="search-box">
+          <input type="search" id="notes-search" placeholder="Search notes or #tags…" aria-label="Search notes">
+        </div>
+
+        <div class="storage-badge">
+          <span class="live-dot"></span>
+          <span id="storage-status-text">Cloud synced via Firestore</span>
+        </div>
+
+        <div id="notes-list" class="notes-list" role="feed" aria-label="List of notes">
+          <!-- Note items rendered dynamically -->
+        </div>
+
+        <div class="sidebar-footer">
+          <button type="button" id="export-backup-btn" class="text-button">Export Backup</button>
+          <label for="import-backup-file" class="text-button file-label">Import Backup</label>
+          <input type="file" id="import-backup-file" accept=".json" class="visually-hidden">
+          <button type="button" id="manage-admins-btn" class="text-button" hidden>Manage Admins</button>
+        </div>
+      </aside>
+
+      <!-- Note Editor -->
+      <section class="notes-editor-pane" aria-label="Note editor">
+        <form id="note-form" class="note-form">
+          <div class="editor-header">
+            <input type="text" id="note-title" class="note-title-input" placeholder="Note title…" required>
+            <div class="editor-actions">
+              <span id="save-indicator" class="save-indicator">Saved</span>
+              <button type="button" id="delete-note-btn" class="icon-button danger-btn" title="Delete note" aria-label="Delete note">×</button>
+              <button type="submit" id="save-note-btn" class="primary-button compact-btn">Save <span>↗</span></button>
+            </div>
+          </div>
+
+          <div class="tags-input-bar">
+            <input type="text" id="note-tags" placeholder="Tags (separated by comma or space, e.g. #ideas, #design)">
+          </div>
+
+          <div class="editor-body">
+            <textarea id="note-content" class="note-textarea" placeholder="Write or paste your note here… (You can paste text or images directly from your clipboard)"></textarea>
+          </div>
+
+          <!-- Attachments Panel -->
+          <div class="attachments-section">
+            <div class="attachments-header">
+              <p class="eyebrow">ATTACHMENTS & IMAGES (<span id="attachment-count">0</span>)</p>
+              <label for="attachment-file-input" class="text-button file-label">+ Attach files</label>
+              <input type="file" id="attachment-file-input" multiple class="visually-hidden">
+            </div>
+
+            <div id="attachments-gallery" class="attachments-gallery">
+              <!-- Thumbnails and file chips rendered here -->
+            </div>
+            <p class="micro-note">Attachments are preserved with your note and stored in local IndexedDB. Use Export Backup to transfer between devices.</p>
+          </div>
+        </form>
+      </section>
+    </div>
+
+    <!-- Admin Management Drawer (Owner Only) -->
+    <aside id="admin-drawer" class="owner-drawer" hidden>
+      <div class="drawer-heading">
+        <p class="eyebrow">FJ / OWNER / ADMINS</p>
+        <button id="admin-drawer-close" class="icon-button" type="button" aria-label="Close admin management">×</button>
+      </div>
+      <h2>Authorized Admins</h2>
+      <p class="card-copy">Only you can grant or revoke admin access. Revocation immediately cuts Firestore access.</p>
+
+      <form id="add-admin-form" class="compact-form">
+        <label for="admin-uid-input">Admin Firebase UID</label>
+        <input type="text" id="admin-uid-input" placeholder="User UID" required>
+        <label for="admin-email-input">Admin Email (optional)</label>
+        <input type="email" id="admin-email-input" placeholder="admin@example.com">
+        <button type="submit" class="primary-button compact-btn">Authorize admin <span>↗</span></button>
+      </form>
+
+      <div id="admins-list" class="admins-list"></div>
+    </aside>
+
+    <footer class="page-footer">
+      <a href="index.html">← Back to the signal</a>
+      <span>FJ / OWNER FREQUENCY / 003</span>
+    </footer>
+  </main>
+
+  <script type="module" src="notes.js?v=20261115-3"></script>
+</body>
+</html>

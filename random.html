@@ -1,3 +1,24 @@
-<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#020203"><title>Opening a random page — FJ</title><link rel="stylesheet" href="styles.css?v=20261115-3"></head>
-<body class="site-body"><main class="human-gate"><p class="eyebrow">FJ / RANDOM ACCESS</p><h1>Changing<br>direction<span>—</span></h1><p class="gate-copy" id="redirect-status" role="status" aria-live="polite">Finding your page…</p><a href="https://en.wikipedia.org/wiki/Special:Random">Continue to a random Wikipedia article ↗</a></main><script type="module" src="random.js?v=20261115-3"></script></body></html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<title>FJ</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<main class="stage" id="random-root">
+    <div class="redirect-card">
+        <p class="redirect-mark">FJ</p>
+        <p id="random-status">Choosing a page…</p>
+        <a id="random-link" href="index.html">Back to FJ</a>
+    </div>
+</main>
+<noscript>
+    <p class="redirect-note">JavaScript chooses the random page. Open the FJ home page and use the QR code from a browser that runs JavaScript.</p>
+</noscript>
+<script type="module" src="random.js"></script>
+</body>
+</html>
