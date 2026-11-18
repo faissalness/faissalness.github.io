@@ -6,7 +6,7 @@ Updated: 2026-11-18 (Europe/Stockholm)
 
 - Existing project: `C:\Users\faiss\OneDrive\Desktop\FJ-website`.
 - `2cca634` is on `main` and `origin/main`.
-- Current PIP, owner-only Notes, verified-email policy, and related test changes are uncommitted. Pre-existing user files, backups, and local state remain untouched.
+- Local implementation commits through `29756a7` are not pushed. Pre-existing user files, backups, and local state remain untouched.
 
 ## Latest local checks
 
@@ -26,7 +26,7 @@ Updated: 2026-11-18 (Europe/Stockholm)
 
 - Latest public GitHub Pages Actions run for `2cca634` completed successfully. Live homepage and `/qr/` return 200. `/backend/worker.js`, `/backend/worker.js.map`, and `/firestore.rules` return 404. `/pip/` remains 404 because the local PIP implementation has not been published.
 - Live Worker root returns HTTP 200 `{"status":"FJ API Operational"}`. A fresh production forgery probe used correct project claims, a real Google key ID, and an invalid 256-byte signature; Worker returned HTTP 401, `{"error":"Access denied"}`, `Cache-Control: no-store`.
-- Firebase rules deployment printed compile, release and `Deploy complete` after closing the missing-session and client-writable-session bypasses. The CLI still exits 1 after deployment because its local update-check/config store fails. Production unauthenticated REST probes for `privateNotes`, `activeNotesSessions`, and `yourNotes` all return 403 `PERMISSION_DENIED`.
+- Firebase rules deployment printed compile, release and `Deploy complete` after closing the missing-session and client-writable-session bypasses. The CLI still exits 1 after deployment because its local update-check/config store fails. Production unauthenticated REST probes for `privateNotes`, `activeNotesSessions`, the `yourNotes` account document and notes all return 403 `PERMISSION_DENIED`.
 - Updated account lifecycle rules also compiled and released successfully. The Firebase CLI still exits 1 after the release because its local update-check/config store fails.
 
 ## Work implemented locally
@@ -48,7 +48,7 @@ Updated: 2026-11-18 (Europe/Stockholm)
 
 - Committed reviewed frontend, workflow, Worker, rules, and test changes as local commit `142db21` (parent `2cca634`). The user-owned untracked configuration, task text, backups, and `.wrangler` state were not staged.
 - Follow-up execution record is commit `6823b1d`; tab-scoped human verification is `02d0ba6`; QR color behavior and regression coverage are `ec4945b`.
-- CSP policy and website audit assertion are committed as `161de8e`; the deletion flow/rules/tests are validated locally but are not yet committed.
+- CSP policy and website audit assertion are committed as `161de8e`; the deletion flow/rules/tests are committed as `29756a7`.
 - `git push origin main` was attempted after commit and failed before authentication: Git Credential Manager could not access Windows credentials (`0xC0000022`, Credential Manager `0x5`). Remote `main` remains `2cca634`.
 - Firebase rules were released successfully (CLI printed `Deploy complete!`); the process then exited 1 from the local Firebase CLI update-check/config-store failure. Live unauthenticated REST checks return 403 for protected collections.
 - Cloudflare OAuth remains expired. `wrangler whoami` previously reported the expired token, so the current local Worker changes have not been deployed.
@@ -57,9 +57,9 @@ Updated: 2026-11-18 (Europe/Stockholm)
 
 1. Replace Worker isolate-local password/session/invitation maps with a durable free-tier backend and connect trusted session issuance to Firestore before restoring owner Notes access.
 2. Finish the separate Your Notes password, administrators, unattended deletion, public user count, Post It Pal, protected attachments/offline behavior, approval-email workflow, and integrated FJ QR design.
-3. Commit the validated lifecycle changes, reauthorize Git Credential Manager, push all local commits, wait for Pages deployment, and verify `/pip/` and the deployed revision.
+3. Reauthorize Git Credential Manager, push all local commits through `29756a7`, wait for Pages deployment, and verify `/pip/` and the deployed revision.
 4. Reauthorize Wrangler, deploy and independently test the Worker; replace its isolate-local state with durable trusted session issuance before restoring owner Notes access.
 
 ## Completion
 
-Incomplete. Production source routes are no longer accessible, forged tokens are rejected, and the latest account-lifecycle Firestore rules are released. Local commits through `161de8e` plus uncommitted-but-tested deletion-flow work are not pushed because Git Credential Manager cannot access Windows credentials. The current GitHub Pages version therefore still lacks PIP. The Worker still needs a durable backend and redeployment, original Notes is fail-closed pending trusted session issuance, multiple required features remain unimplemented, and end-to-end production acceptance has not passed.
+Incomplete. Production source routes are no longer accessible, forged tokens are rejected, and the latest account-lifecycle Firestore rules are released. Local commits through `29756a7` contain the tested PIP, session-rule, human-verification, QR-tech, CSP, referrer-policy and deletion work but are not pushed because Git Credential Manager cannot access Windows credentials. The current GitHub Pages version therefore still lacks PIP. The Worker still needs a durable backend and redeployment, original Notes is fail-closed pending trusted session issuance, multiple required features remain unimplemented, and end-to-end production acceptance has not passed.
