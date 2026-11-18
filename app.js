@@ -135,14 +135,8 @@ function revealMainPage(user) {
   $("#private-home").hidden = false;
   $("#private-home").classList.add("home-reveal");
   if ($("#owner-open")) $("#owner-open").hidden = user.uid !== ownerUid;
-  const flash = $("#screen-flash");
-  if (flash) {
-    flash.classList.remove("play");
-    void flash.offsetWidth;
-    flash.classList.add("play");
-  }
+  document.body.classList.remove("auth-pending");
   animateMagneticTiles();
-  loadQrCode();
 }
 
 function animateMagneticTiles() {
@@ -297,6 +291,7 @@ if (!configured) {
   showStatus("Firebase is not configured yet. Sign-in and access requests are unavailable.", "error");
   if ($("#human-gate")) $("#human-gate").hidden = true;
   if ($("#auth-shell")) $("#auth-shell").hidden = false;
+  document.body.classList.remove("auth-pending");
 } else {
   const app = initializeApp(firebaseConfig);
   const auth = getAuth(app);
@@ -420,6 +415,7 @@ if (!configured) {
       if ($("#owner-drawer")) $("#owner-drawer").hidden = true;
       $("#human-gate").hidden = sessionStorage.getItem("fj-human-check") === "passed";
       $("#auth-shell").hidden = sessionStorage.getItem("fj-human-check") !== "passed";
+      document.body.classList.remove("auth-pending");
       return;
     }
     $("#human-gate").hidden = true;

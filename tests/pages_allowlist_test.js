@@ -8,8 +8,8 @@ const allowlistSection = workflow.split('for file in \\\n')[1]?.split('; do')[0]
 assert.ok(allowlistSection, 'Pages workflow must use an explicit public file allowlist');
 const allowlist = allowlistSection.replace(/\\/g, '').trim().split(/\s+/).filter(Boolean);
 const required = [
-  'index.html', 'meet.html', 'gods.html', 'notes.html', 'random.html',
-  'app.js', 'private-page.js', 'notes.js', 'random.js', 'qr-client.js',
+  'index.html', 'meet.html', 'gods.html', 'notes.html', 'random.html', 'qr.html',
+  'app.js', 'private-page.js', 'notes.js', 'random.js', 'qr-client.js', 'qr-tech.js', 'qr-url.js',
   'destinations.js', 'firebase-config.js', 'styles.css', 'favicon.svg', 'qr.png'
 ];
 

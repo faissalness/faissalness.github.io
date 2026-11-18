@@ -334,6 +334,16 @@ export default {
     // 3. FJ Invitation Redeem Endpoint
     if (url.pathname === "/api/invitations/redeem" && request.method === "POST") {
       try {
+        const authHeader = request.headers.get("Authorization") || "";
+        const idToken = authHeader.replace(/^Bearer\s+/i, "");
+        const identity = await verifyFirebaseIdToken(idToken);
+        if (!identity) {
+          return new Response(JSON.stringify({ error: "Access denied" }), {
+            status: 401,
+            headers: { ...corsHeaders, "Content-Type": "application/json" }
+          });
+        }
+
         const body = await request.json();
         const token = (body.token || "").trim().toLowerCase();
 
@@ -356,7 +366,7 @@ export default {
 
         // Consume atomically
         record.consumed = true;
-        record.consumedBy = body.uid || "anonymous";
+        record.consumedBy = identity.sub;
 
         return new Response(JSON.stringify({ success: true }), {
           status: 200,

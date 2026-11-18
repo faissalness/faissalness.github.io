@@ -15,7 +15,7 @@ const path = require('path');
 console.log("=== FULL WEBSITE AUDIT & ASSET VERIFICATION SUITE ===\n");
 
 const ROOT = path.join(__dirname, '..');
-const HTML_FILES = ['index.html', 'meet.html', 'gods.html', 'notes.html', 'random.html'];
+const HTML_FILES = ['index.html', 'meet.html', 'gods.html', 'notes.html', 'random.html', 'qr.html'];
 let passedAudits = 0;
 
 // 1. Verify existence of all HTML files
@@ -58,6 +58,12 @@ assert.ok(fs.statSync(path.join(ROOT, 'qr.png')).size > 1000, "qr.png must not b
 assert.ok(fs.existsSync(path.join(ROOT, 'favicon.svg')), "favicon.svg must exist");
 assert.ok(fs.existsSync(path.join(ROOT, 'styles.css')), "styles.css must exist");
 passedAudits += 3;
+const qrPage = fs.readFileSync(path.join(ROOT, 'qr.html'), 'utf8');
+assert.ok(qrPage.includes('<h1>QR-tech <span>05</span></h1>') && qrPage.includes('qr-tech.js'),
+  'QR-tech 05 must have a dedicated page and load its generator');
+assert.ok(fs.readFileSync(path.join(ROOT, '.github', 'workflows', 'deploy-pages.yml'), 'utf8').includes('dist/qr/index.html'),
+  'Pages workflow must publish the clean /qr/ route');
+passedAudits += 2;
 console.log(" PASS: Core assets (qr.png, favicon.svg, styles.css) exist and are valid.");
 
 // 4. Verify Accessibility: Reduced-Motion and Visible Focus
@@ -73,6 +79,7 @@ console.log(" PASS: prefers-reduced-motion, focus-visible, and brand contrast ve
 console.log("\n5. Checking Navigation Links Consistency...");
 HTML_FILES.forEach(file => {
   const content = fs.readFileSync(path.join(ROOT, file), 'utf8');
+  assert.ok(!/href="[^"]+\.html(?:[?#][^"]*)?"/i.test(content), `${file} must use clean user-facing routes`);
   const hrefMatches = content.match(/href="([^"#:]+\.html)"/g) || [];
   hrefMatches.forEach(hrefAttr => {
     const targetFile = hrefAttr.replace(/href="|"/g, '');
@@ -81,5 +88,7 @@ HTML_FILES.forEach(file => {
   passedAudits++;
 });
 console.log(" PASS: All internal navigation links point to valid existing pages.");
+assert.ok(fs.readFileSync(path.join(ROOT, '.github', 'workflows', 'deploy-pages.yml'), 'utf8').includes('for route in meet gods notes'),
+  'Clean routes must have generated Pages directories for the existing sections');
 
 console.log(`\n=== WEBSITE AUDIT COMPLETE: ALL ${passedAudits} CHECKS PASSED SUCCESSFULLY! ===`);

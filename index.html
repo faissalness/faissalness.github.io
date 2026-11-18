@@ -9,13 +9,14 @@
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="styles.css?v=20261115-3">
 </head>
-<body class="site-body">
+<body class="site-body auth-pending">
   <header class="topbar">
-    <a class="site-mark" id="fj" href="index.html" aria-label="FJ home">FJ</a>
+    <a class="site-mark" id="fj" href="/" aria-label="FJ home">FJ</a>
     <nav id="site-nav" class="site-nav" aria-label="Private pages" hidden>
-      <a href="meet.html">Meet me <span>01</span></a>
-      <a href="gods.html">To the gods <span>02</span></a>
-      <a href="notes.html">Notes <span>03</span></a>
+      <a href="/meet/">Meet me <span>01</span></a>
+      <a href="/gods/">To the gods <span>02</span></a>
+      <a href="/notes/">Notes <span>03</span></a>
+      <a href="/qr/">QR-tech <span>05</span></a>
       <button class="icon-button" id="owner-open" type="button" aria-label="Review access requests" title="Review access requests" hidden>↗</button>
       <button class="icon-button signout" id="sign-out" type="button" aria-label="Sign out" title="Sign out">⇥</button>
     </nav>
@@ -58,13 +59,11 @@
         <p class="eyebrow">FJ / PRIVATE FREQUENCY <span class="live-dot"></span> ONLINE</p>
         <h1 id="hero-title">A small signal<br><span>in a large world.</span></h1>
         <p class="hero-intro">A personal corner for curious things, new directions, and the occasional detour.</p>
-        <div class="hero-links"><a href="meet.html">Meet me <span>↗</span></a><a href="gods.html">To the gods <span>↗</span></a><a href="notes.html">Notes <span>↗</span></a></div>
-        <p class="article-label" id="article-label">RANDOM WIKIPEDIA DESTINATION</p>
+        <div class="hero-links"><a href="/meet/">Meet me <span>↗</span></a><a href="/gods/">To the gods <span>↗</span></a><a href="/notes/">Notes <span>↗</span></a><a href="/qr/">QR-tech <span>05</span></a></div>
       </div>
-      <div class="mark-stage" id="mark-stage" aria-label="FJ monogram with a QR code to a random Wikipedia article">
+      <div class="mark-stage" id="mark-stage" aria-label="FJ monogram">
         <div class="magnetic-field" id="magnetic-field" aria-hidden="true"></div>
         <div class="monogram" aria-hidden="true"><span>F</span><span>J</span></div>
-        <div class="qr-dock" id="qr-dock"><img id="qr-image" src="qr.png" alt="Scan to open a random Wikipedia article"><span class="qr-caption">SCAN / WIKIPEDIA</span></div>
         <p class="stage-coordinate">59°19′N&nbsp;&nbsp;18°04′E <span>FJ—01</span></p>
       </div>
     </section>

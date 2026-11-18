@@ -72,6 +72,17 @@ const userToken = makeTestJwt({
   const workerModule = await import('../backend/worker.js');
   const worker = workerModule.default;
 
+  const redemptionWithoutIdentity = await worker.fetch(new Request("https://api.local/api/invitations/redeem", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token: "guessfj", uid: OWNER_UID })
+  }), {}, {});
+  assert.strictEqual(redemptionWithoutIdentity.status, 401, "Invitation redemption must require a verified Firebase identity");
+  const redemptionWithBadIdentity = await worker.fetch(new Request("https://api.local/api/invitations/redeem", {
+    method: "POST", headers: { "Authorization": `Bearer ${makeTestJwt(makeClaims(), true)}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ token: "guessfj", uid: OWNER_UID })
+  }), {}, {});
+  assert.strictEqual(redemptionWithBadIdentity.status, 401, "Forged identity must not redeem invitations");
+
   const allowedPreflight = await worker.fetch(new Request("https://api.local/api/notes/verify", {
     method: "OPTIONS", headers: { Origin: "https://faissalness.github.io" }
   }), {}, {});

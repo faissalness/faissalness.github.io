@@ -14,9 +14,9 @@ const suites = [
   { name: "Workflow and Access Trigger Security Suite", cmd: "node tests/workflow_test.js", expectedTests: 5 },
   { name: "Notes Lock Gate & Persistent Access Suite", cmd: "node tests/notes_gate_test.js", expectedTests: 5 },
   { name: "Invitations & Approval Workflow Suite", cmd: "node tests/invitations_approval_test.js", expectedTests: 3 },
-  { name: "Client-Side QR Engine ISO/IEC Verification", cmd: "node tests/qr_client_test.js", expectedTests: 2 },
-  { name: "Full Website & Asset Audit Suite", cmd: "node tests/website_audit_test.js", expectedTests: 22 },
-  { name: "Cloudflare Worker Backend Security Suite", cmd: "node tests/worker_backend_test.js", expectedTests: 4 },
+  { name: "Client-Side QR Engine ISO/IEC Verification", cmd: "node tests/qr_client_test.js", expectedTests: 10 },
+  { name: "Full Website & Asset Audit Suite", cmd: "node tests/website_audit_test.js", expectedTests: 28 },
+  { name: "Cloudflare Worker Backend Security Suite", cmd: "node tests/worker_backend_test.js", expectedTests: 6 },
   { name: "Comprehensive Python QR Independent Decoding (10 Variants)", cmd: "python tests/qr_comprehensive_test.py", expectedTests: 10 },
   { name: "Baseline Python QR Independent Verification", cmd: "python tests/qr_verification.py", expectedTests: 1 },
   { name: "GitHub Pages Public Artifact Allowlist", cmd: "node tests/pages_allowlist_test.js", expectedTests: 5 }
