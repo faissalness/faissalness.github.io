@@ -37,15 +37,21 @@ Updated: 2026-11-18 (Europe/Stockholm)
 - GitHub Pages workflow source is configured for GitHub Actions. The user pushed `2cca634`, which deployed successfully in the prior run.
 - Firebase CLI is available at `%APPDATA%\npm\firebase.cmd`; it reports expired credentials but compiled and released the current ruleset. Its nonzero post-run state still needs repair before future deployment actions.
 - Wrangler 4 was installed using `npx`. `wrangler whoami` reports the Cloudflare OAuth token expired. The Cloudflare dashboard opens to its sign-in page; no current authenticated Cloudflare browser session was found.
-- Latest local changes have not been committed, pushed, or published. Git credential helper access is still unavailable in this shell.
+
+### Continuation on 2026-11-18
+
+- Committed reviewed frontend, workflow, Worker, rules, and test changes as local commit `142db21` (parent `2cca634`). The user-owned untracked configuration, task text, backups, and `.wrangler` state were not staged.
+- `git push origin main` was attempted after commit and failed before authentication: Git Credential Manager could not access Windows credentials (`0xC0000022`, Credential Manager `0x5`). Remote `main` remains `2cca634`.
+- Firebase rules were released successfully (CLI printed `Deploy complete!`); the process then exited 1 from the local Firebase CLI update-check/config-store failure. Live unauthenticated REST checks return 403 for protected collections.
+- Cloudflare OAuth remains expired. `wrangler whoami` previously reported the expired token, so the current local Worker changes have not been deployed.
 
 ## Next operations
 
 1. Replace Worker isolate-local password/session/invitation maps with a durable free-tier backend and connect trusted session issuance to Firestore before restoring owner Notes access.
 2. Implement the uncompleted separate Your Notes password, account administration, account deletion scheduler, public user count, Post It Pal, attachments security, approval email job, and remaining master requirements.
-3. Reauthenticate Cloudflare, deploy and verify the corrected Worker; the current live Worker is still the previously deployed version.
-4. Commit/push all local changes and wait for the next Pages workflow; then verify `/pip/` and every published feature.
+3. Reauthorize Git Credential Manager, then run `git push origin main` to publish local commit `142db21` and wait for the Pages workflow; verify `/pip/` and the deployed revision.
+4. Sign in again to Cloudflare, then deploy and verify the Worker. The current live Worker is still the previously deployed version.
 
 ## Completion
 
-Incomplete. Production source routes are no longer accessible, forged tokens are rejected, and the tightened Firestore rules are released. The current GitHub Pages live version does not include local PIP work. The Worker still needs a durable backend and redeployment, original Notes is fail-closed pending trusted session issuance, multiple required features remain unimplemented, and end-to-end production acceptance has not passed.
+Incomplete. Production source routes are no longer accessible, forged tokens are rejected, and the tightened Firestore rules are released. Commit `142db21` contains tested local PIP and security work but is not pushed because Git Credential Manager cannot access Windows credentials. The current GitHub Pages version therefore still lacks PIP. The Worker still needs a durable backend and redeployment, original Notes is fail-closed pending trusted session issuance, multiple required features remain unimplemented, and end-to-end production acceptance has not passed.
