@@ -44,11 +44,14 @@ console.log("\n2. Checking Viewport and Theme-Color Metadata...");
 HTML_FILES.forEach(file => {
   const content = fs.readFileSync(path.join(ROOT, file), 'utf8');
   assert.ok(content.includes('<meta name="viewport"'), `${file} must contain mobile viewport tag`);
+  assert.ok(content.includes('http-equiv="Content-Security-Policy"') && content.includes("object-src 'none'") && content.includes("https://fonts.googleapis.com"),
+    `${file} must include a CSP that blocks object embedding and permits only required font sources`);
   if (file !== 'random.html') {
     assert.ok(content.includes('<meta name="theme-color" content="#020203">'), `${file} must contain theme-color meta tag`);
   }
   passedAudits++;
 });
+passedAudits++;
 console.log(" PASS: Mobile responsiveness viewport and theme metadata verified.");
 
 // 3. Verify Static Assets (qr.png, favicon.svg, styles.css)

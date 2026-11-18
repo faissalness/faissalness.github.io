@@ -10,7 +10,7 @@ Updated: 2026-11-18 (Europe/Stockholm)
 
 ## Latest local checks
 
-- `node tests/run_all_tests.js`: 147 passed, 0 failed. This includes 55 Firestore logic simulator cases, 10 independent QR decodes, QR color/quiet-zone checks, tab-scoped human verification regressions, and the deployment allowlist suite.
+- `node tests/run_all_tests.js`: 146 passed, 0 failed. This includes 55 Firestore logic simulator cases, 10 independent QR decodes, QR color/quiet-zone checks, tab-scoped human verification regressions, and the deployment allowlist suite.
 - Firestore Local Emulator Suite: 17/17 actual rules-unit tests passed, including UID isolation, role injection, owner session expiry/absence, and browser-forged session rejection. The test script passed; Firebase CLI exits 1 afterward due its local update-check/config-store error.
 - Syntax checks passed for `app.js`, `notes.js`, `pip.js`, `qr-tech.js`, `qr-url.js`, and `backend/worker.js`.
 - `git diff --check` passed.
@@ -19,6 +19,7 @@ Updated: 2026-11-18 (Europe/Stockholm)
 - PIP page was visually checked at 390px mobile width; navigation, sign-in and account creation cards fit the viewport.
 - Human-check success is now bound to a per-tab `window.name` identifier as well as `sessionStorage`, so a copied session marker in a newly opened tab does not satisfy the check.
 - QR-tech now chooses a high-contrast accent color for each newly generated QR and prevents immediate repeat colors; the four-module quiet zone remains in place.
+- All public HTML pages now carry a restrictive CSP meta policy and a referrer policy; the CSP allows only the Firebase/Wikipedia endpoints and Google Fonts actually used by the site.
 
 ## Production evidence
 
@@ -45,6 +46,7 @@ Updated: 2026-11-18 (Europe/Stockholm)
 
 - Committed reviewed frontend, workflow, Worker, rules, and test changes as local commit `142db21` (parent `2cca634`). The user-owned untracked configuration, task text, backups, and `.wrangler` state were not staged.
 - Follow-up execution record is commit `6823b1d`; tab-scoped human verification is `02d0ba6`; QR color behavior and regression coverage are `ec4945b`.
+- CSP policy and its website audit assertion are the next local changes; they have passed the full local suite but are not yet committed.
 - `git push origin main` was attempted after commit and failed before authentication: Git Credential Manager could not access Windows credentials (`0xC0000022`, Credential Manager `0x5`). Remote `main` remains `2cca634`.
 - Firebase rules were released successfully (CLI printed `Deploy complete!`); the process then exited 1 from the local Firebase CLI update-check/config-store failure. Live unauthenticated REST checks return 403 for protected collections.
 - Cloudflare OAuth remains expired. `wrangler whoami` previously reported the expired token, so the current local Worker changes have not been deployed.
