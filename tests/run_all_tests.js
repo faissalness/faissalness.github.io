@@ -16,7 +16,7 @@ const suites = [
   { name: "Invitations & Approval Workflow Suite", cmd: "node tests/invitations_approval_test.js", expectedTests: 3 },
   { name: "Client-Side QR Engine ISO/IEC Verification", cmd: "node tests/qr_client_test.js", expectedTests: 10 },
   { name: "Full Website & Asset Audit Suite", cmd: "node tests/website_audit_test.js", expectedTests: 35 },
-  { name: "Human Verification and Reload Regression Checks", cmd: "node tests/human_verification_test.js", expectedTests: 5 },
+  { name: "Human Verification and Reload Regression Checks", cmd: "node tests/human_verification_test.js", expectedTests: 6 },
   { name: "Cloudflare Worker Backend Security Suite", cmd: "node tests/worker_backend_test.js", expectedTests: 7 },
   { name: "Comprehensive Python QR Independent Decoding (10 Variants)", cmd: "python tests/qr_comprehensive_test.py", expectedTests: 10 },
   { name: "Baseline Python QR Independent Verification", cmd: "python tests/qr_verification.py", expectedTests: 1 },

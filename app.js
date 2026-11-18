@@ -12,6 +12,25 @@ const palette = ["#d2ff5a", "#ff70b7", "#86d9ff", "#f2f0e9", "#c6a7ff", "#ffb37b
 let requestInProgress = false;
 let unsubscribeRequests;
 
+const HUMAN_CHECK_KEY = "fj-human-check";
+function humanTabId() {
+  const current = /^fj-human-tab:([0-9a-f-]{36})$/i.exec(window.name);
+  if (current) return current[1];
+  const id = crypto.randomUUID();
+  window.name = `fj-human-tab:${id}`;
+  return id;
+}
+const currentHumanTabId = humanTabId();
+function hasHumanCheckPassed() {
+  try {
+    const marker = JSON.parse(sessionStorage.getItem(HUMAN_CHECK_KEY) || "null");
+    return marker?.status === "passed" && marker?.tabId === currentHumanTabId;
+  } catch { return false; }
+}
+function saveHumanCheck() {
+  sessionStorage.setItem(HUMAN_CHECK_KEY, JSON.stringify({ status: "passed", tabId: currentHumanTabId }));
+}
+
 function showStatus(message, state = "info") {
   status.textContent = message;
   status.dataset.state = state;
@@ -102,7 +121,7 @@ function humanChallenge() {
   const a = Math.floor(Math.random() * 7) + 2;
   const b = Math.floor(Math.random() * 7) + 2;
   $("#human-question").textContent = `Quick check: what is ${a} + ${b}?`;
-  if (sessionStorage.getItem("fj-human-check") === "passed") {
+  if (hasHumanCheckPassed()) {
     humanGate.hidden = true;
     authShell.hidden = false;
   }
@@ -114,7 +133,7 @@ function humanChallenge() {
       $("#human-answer").focus();
       return;
     }
-    sessionStorage.setItem("fj-human-check", "passed");
+    saveHumanCheck();
     $("#human-status").textContent = "Verified. Opening the access screen…";
     humanGate.classList.add("gate-complete");
     window.setTimeout(() => {
@@ -418,13 +437,13 @@ if (!configured) {
       $("#private-home").hidden = true;
       $("#site-nav").hidden = true;
       if ($("#owner-drawer")) $("#owner-drawer").hidden = true;
-      $("#human-gate").hidden = sessionStorage.getItem("fj-human-check") === "passed";
-      $("#auth-shell").hidden = sessionStorage.getItem("fj-human-check") !== "passed";
+      $("#human-gate").hidden = hasHumanCheckPassed();
+      $("#auth-shell").hidden = !hasHumanCheckPassed();
       document.body.classList.remove("auth-pending");
       return;
     }
     window.fjHasAuthenticatedSession = true;
-    if (sessionStorage.getItem("fj-human-check") !== "passed") {
+    if (!hasHumanCheckPassed()) {
       $("#private-home").hidden = true;
       $("#site-nav").hidden = true;
       $("#auth-shell").hidden = true;

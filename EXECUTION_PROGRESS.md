@@ -10,12 +10,13 @@ Updated: 2026-11-18 (Europe/Stockholm)
 
 ## Latest local checks
 
-- `node tests/run_all_tests.js`: 143 passed, 0 failed. This includes 55 Firestore logic simulator cases, 10 independent QR decodes, and the deployment allowlist suite.
+- `node tests/run_all_tests.js`: 144 passed, 0 failed. This includes 55 Firestore logic simulator cases, 10 independent QR decodes, tab-scoped human verification regressions, and the deployment allowlist suite.
 - Firestore Local Emulator Suite: 17/17 actual rules-unit tests passed, including UID isolation, role injection, owner session expiry/absence, and browser-forged session rejection. The test script passed; Firebase CLI exits 1 afterward due its local update-check/config-store error.
 - Syntax checks passed for `app.js`, `notes.js`, `pip.js`, `qr-tech.js`, `qr-url.js`, and `backend/worker.js`.
 - `git diff --check` passed.
 - QR test independently decoded the JavaScript-generated QR matrix to the exact test URL and covers unsafe URL rejection.
 - PIP page was visually checked at 390px mobile width; navigation, sign-in and account creation cards fit the viewport.
+- Human-check success is now bound to a per-tab `window.name` identifier as well as `sessionStorage`, so a copied session marker in a newly opened tab does not satisfy the check.
 
 ## Production evidence
 
@@ -41,6 +42,7 @@ Updated: 2026-11-18 (Europe/Stockholm)
 ### Continuation on 2026-11-18
 
 - Committed reviewed frontend, workflow, Worker, rules, and test changes as local commit `142db21` (parent `2cca634`). The user-owned untracked configuration, task text, backups, and `.wrangler` state were not staged.
+- Follow-up execution record is commit `6823b1d`; the tab-scoped human-verification fix and its updated test are later local changes awaiting their own commit.
 - `git push origin main` was attempted after commit and failed before authentication: Git Credential Manager could not access Windows credentials (`0xC0000022`, Credential Manager `0x5`). Remote `main` remains `2cca634`.
 - Firebase rules were released successfully (CLI printed `Deploy complete!`); the process then exited 1 from the local Firebase CLI update-check/config-store failure. Live unauthenticated REST checks return 403 for protected collections.
 - Cloudflare OAuth remains expired. `wrangler whoami` previously reported the expired token, so the current local Worker changes have not been deployed.
