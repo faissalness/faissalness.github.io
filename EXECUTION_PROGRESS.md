@@ -14,6 +14,7 @@ Updated: 2026-11-18 (Europe/Stockholm)
 - Firestore Local Emulator Suite: 17/17 actual rules-unit tests passed, including UID isolation, role injection, owner session expiry/absence, and browser-forged session rejection. The test script passed; Firebase CLI exits 1 afterward due its local update-check/config-store error.
 - Syntax checks passed for `app.js`, `notes.js`, `pip.js`, `qr-tech.js`, `qr-url.js`, and `backend/worker.js`.
 - `git diff --check` passed.
+- A local run of the Pages allowlist assembly succeeded: 26 files, five clean route aliases, no Worker/source-map markers.
 - QR test independently decoded the JavaScript-generated QR matrix to the exact test URL and covers unsafe URL rejection.
 - PIP page was visually checked at 390px mobile width; navigation, sign-in and account creation cards fit the viewport.
 - Human-check success is now bound to a per-tab `window.name` identifier as well as `sessionStorage`, so a copied session marker in a newly opened tab does not satisfy the check.
@@ -43,7 +44,7 @@ Updated: 2026-11-18 (Europe/Stockholm)
 ### Continuation on 2026-11-18
 
 - Committed reviewed frontend, workflow, Worker, rules, and test changes as local commit `142db21` (parent `2cca634`). The user-owned untracked configuration, task text, backups, and `.wrangler` state were not staged.
-- Follow-up execution record is commit `6823b1d`; tab-scoped human verification and its updated regression test are committed as `02d0ba6`.
+- Follow-up execution record is commit `6823b1d`; tab-scoped human verification is `02d0ba6`; QR color behavior and regression coverage are `ec4945b`.
 - `git push origin main` was attempted after commit and failed before authentication: Git Credential Manager could not access Windows credentials (`0xC0000022`, Credential Manager `0x5`). Remote `main` remains `2cca634`.
 - Firebase rules were released successfully (CLI printed `Deploy complete!`); the process then exited 1 from the local Firebase CLI update-check/config-store failure. Live unauthenticated REST checks return 403 for protected collections.
 - Cloudflare OAuth remains expired. `wrangler whoami` previously reported the expired token, so the current local Worker changes have not been deployed.
@@ -52,9 +53,9 @@ Updated: 2026-11-18 (Europe/Stockholm)
 
 1. Replace Worker isolate-local password/session/invitation maps with a durable free-tier backend and connect trusted session issuance to Firestore before restoring owner Notes access.
 2. Implement the uncompleted separate Your Notes password, account administration, account deletion scheduler, public user count, Post It Pal, attachments security, approval email job, and remaining master requirements.
-3. Reauthorize Git Credential Manager, then run `git push origin main` to publish local commits through `02d0ba6` and wait for the Pages workflow; verify `/pip/` and the deployed revision.
+3. Reauthorize Git Credential Manager, then run `git push origin main` to publish local commits through `ec4945b` and wait for the Pages workflow; verify `/pip/` and the deployed revision.
 4. Sign in again to Cloudflare, then deploy and verify the Worker. The current live Worker is still the previously deployed version.
 
 ## Completion
 
-Incomplete. Production source routes are no longer accessible, forged tokens are rejected, and the tightened Firestore rules are released. Local commits through `02d0ba6` contain tested PIP, session-rule and human-verification work but are not pushed because Git Credential Manager cannot access Windows credentials. The current GitHub Pages version therefore still lacks PIP. The Worker still needs a durable backend and redeployment, original Notes is fail-closed pending trusted session issuance, multiple required features remain unimplemented, and end-to-end production acceptance has not passed.
+Incomplete. Production source routes are no longer accessible, forged tokens are rejected, and the tightened Firestore rules are released. Local commits through `ec4945b` contain tested PIP, session-rule, human-verification and QR-tech work but are not pushed because Git Credential Manager cannot access Windows credentials. The current GitHub Pages version therefore still lacks PIP. The Worker still needs a durable backend and redeployment, original Notes is fail-closed pending trusted session issuance, multiple required features remain unimplemented, and end-to-end production acceptance has not passed.
