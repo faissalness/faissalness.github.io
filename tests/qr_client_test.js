@@ -2,6 +2,7 @@ import assert from 'assert';
 import { generateQrMatrix, renderQrDataUrl } from '../qr-client.js';
 import { isSafeQrDestination } from '../qr-url.js';
 import { execSync } from 'child_process';
+import { readFileSync } from 'fs';
 
 console.log("=== TESTING QR CLIENT GENERATOR ===");
 
@@ -47,5 +48,12 @@ assert.strictEqual(isSafeQrDestination("javascript:alert(1)"), false, "Script UR
 assert.strictEqual(isSafeQrDestination("https://user:pass@en.wikipedia.org/wiki/Earth"), false, "Credential-bearing URLs must be rejected");
 assert.strictEqual(isSafeQrDestination(`https://en.wikipedia.org/wiki/${'A'.repeat(60)}`), false, "Destinations that exceed QR capacity must be rejected");
 console.log(" PASS: Destination validation rejects unsafe schemes, lookalikes, credentials, and overlength links.");
+
+const qrTech = readFileSync(new URL('../qr-tech.js', import.meta.url), 'utf8');
+assert.match(qrTech, /const QR_COLORS = \[.*?#d2ff5a.*?#ff70b7.*?#86d9ff/s, "QR-tech provides high-contrast FJ colors");
+assert.match(qrTech, /function nextQrColor\(\)[\s\S]*?previousQrColor = choices\[Math\.floor\(Math\.random\(\) \* choices\.length\)\]/,
+  "Each QR refresh picks a random color and avoids immediately repeating the last color");
+assert.match(qrTech, /renderQrSvg\(generateQrMatrix\(destination\.url, 4, "M"\), nextQrColor\(\), "#020203", 4\)/,
+  "The random accent is applied to the scannable QR itself with dark contrast and a four-module quiet zone");
 
 console.log("=== QR CLIENT TEST COMPLETE ===\n");

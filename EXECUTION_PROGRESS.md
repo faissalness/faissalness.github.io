@@ -10,13 +10,14 @@ Updated: 2026-11-18 (Europe/Stockholm)
 
 ## Latest local checks
 
-- `node tests/run_all_tests.js`: 144 passed, 0 failed. This includes 55 Firestore logic simulator cases, 10 independent QR decodes, tab-scoped human verification regressions, and the deployment allowlist suite.
+- `node tests/run_all_tests.js`: 147 passed, 0 failed. This includes 55 Firestore logic simulator cases, 10 independent QR decodes, QR color/quiet-zone checks, tab-scoped human verification regressions, and the deployment allowlist suite.
 - Firestore Local Emulator Suite: 17/17 actual rules-unit tests passed, including UID isolation, role injection, owner session expiry/absence, and browser-forged session rejection. The test script passed; Firebase CLI exits 1 afterward due its local update-check/config-store error.
 - Syntax checks passed for `app.js`, `notes.js`, `pip.js`, `qr-tech.js`, `qr-url.js`, and `backend/worker.js`.
 - `git diff --check` passed.
 - QR test independently decoded the JavaScript-generated QR matrix to the exact test URL and covers unsafe URL rejection.
 - PIP page was visually checked at 390px mobile width; navigation, sign-in and account creation cards fit the viewport.
 - Human-check success is now bound to a per-tab `window.name` identifier as well as `sessionStorage`, so a copied session marker in a newly opened tab does not satisfy the check.
+- QR-tech now chooses a high-contrast accent color for each newly generated QR and prevents immediate repeat colors; the four-module quiet zone remains in place.
 
 ## Production evidence
 

@@ -6,6 +6,13 @@ const image = $("#qr-tech-image");
 const download = $("#qr-download");
 const label = $("#qr-destination");
 const open = $("#qr-open");
+const QR_COLORS = ["#d2ff5a", "#ff70b7", "#86d9ff", "#c6a7ff", "#f2f0e9"];
+let previousQrColor = "";
+function nextQrColor() {
+  const choices = QR_COLORS.filter(color => color !== previousQrColor);
+  previousQrColor = choices[Math.floor(Math.random() * choices.length)];
+  return previousQrColor;
+}
 async function chooseDestination() {
   try {
     const response = await fetch("https://en.wikipedia.org/api/rest_v1/page/random/summary", {
@@ -27,7 +34,7 @@ async function refresh() {
   label.textContent = "Finding a destination…";
   try {
     const destination = await chooseDestination();
-    const svg = renderQrSvg(generateQrMatrix(destination.url, 4, "M"), "#020203", "#ffffff", 4)
+    const svg = renderQrSvg(generateQrMatrix(destination.url, 4, "M"), nextQrColor(), "#020203", 4)
       .replace('width="100%" height="100%"', 'width="410" height="410"');
     const blob = new Blob([svg], { type: "image/svg+xml;charset=utf-8" });
     const objectUrl = URL.createObjectURL(blob);
