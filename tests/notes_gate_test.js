@@ -14,11 +14,12 @@ const notesHtml = fs.readFileSync(path.join(__dirname, '..', 'notes.html'), 'utf
 const stylesCss = fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8');
 const notesJs = fs.readFileSync(path.join(__dirname, '..', 'notes.js'), 'utf8');
 
-// 1. Exact persistent text "you can't come in here"
+// 1. Exact persistent text "You can't come in here"
 console.log("1. Testing Notes Gate Exact Text...");
-assert.ok(notesHtml.includes("you can't come in here"), "Notes gate MUST contain exact text: 'you can't come in here'");
+assert.ok(notesHtml.includes("You can't come in here"), "Notes gate MUST capitalize the first letter of 'You can't come in here'");
 assert.ok(!notesHtml.includes("you cannot come in here"), "Old text 'you cannot come in here' must be replaced");
-console.log(" PASS: Gate message exactly matches 'you can't come in here'.");
+assert.ok(stylesCss.includes(".gate-message{margin:0;color:#fff"), "Gate text must be bright white");
+console.log(" PASS: Gate message is correctly capitalized and bright white.");
 
 // 2. Neon-green unlabeled password input
 console.log("\n2. Testing Neon Green Unlabeled Password Input...");

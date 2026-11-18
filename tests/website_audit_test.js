@@ -29,6 +29,16 @@ HTML_FILES.forEach(file => {
 });
 console.log(` PASS: All ${HTML_FILES.length} HTML pages exist and are non-empty.`);
 
+// 1a. Verify the FJ favicon is linked on every public page
+HTML_FILES.forEach(file => {
+  const content = fs.readFileSync(path.join(ROOT, file), 'utf8');
+  assert.ok(content.includes('<link rel="icon" href="favicon.svg"'), `${file} must link the FJ favicon`);
+});
+assert.ok(fs.readFileSync(path.join(ROOT, 'favicon.svg'), 'utf8').includes('>fj</text>'),
+  'Favicon must show lowercase white fj lettering');
+passedAudits++;
+console.log(" PASS: Lowercase FJ favicon is linked across all pages.");
+
 // 2. Verify Viewport and Mobile Metadata
 console.log("\n2. Checking Viewport and Theme-Color Metadata...");
 HTML_FILES.forEach(file => {

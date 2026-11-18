@@ -40,9 +40,9 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:1px solid var(-
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
 
 /* Notes and PIN Gate Styles */
-.gate-forbidden{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:85vh;color:#8c8d91;font:14px var(--mono);letter-spacing:.06em;user-select:none;padding:20px}
+.gate-forbidden{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:85vh;color:#fff;font:14px var(--mono);letter-spacing:.06em;user-select:none;padding:20px}
 .gate-lock-container{display:flex;flex-direction:column;align-items:center;gap:20px;width:min(280px,90vw)}
-.gate-message{margin:0;color:#8c8d91;font-size:14px;letter-spacing:.08em;text-align:center}
+.gate-message{margin:0;color:#fff;font-size:14px;letter-spacing:.08em;text-align:center}
 .gate-password-form{width:100%;display:flex;flex-direction:column;align-items:center}
 .neon-gate-input{width:100%;max-width:240px;height:42px;padding:0 14px;background:#050608;border:1px solid var(--lime);border-radius:2px;color:var(--lime);caret-color:var(--lime);font:16px var(--mono);text-align:center;letter-spacing:.25em;outline:none;box-shadow:0 0 12px rgba(203,255,89,.22),inset 0 0 8px rgba(203,255,89,.06);transition:border-color .25s,box-shadow .25s,transform .15s}
 .neon-gate-input:focus{border-color:#e5ff99;box-shadow:0 0 20px rgba(203,255,89,.45),inset 0 0 12px rgba(203,255,89,.12)}

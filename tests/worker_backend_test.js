@@ -10,50 +10,76 @@
  */
 
 const assert = require('assert');
+const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
 
-// Simple base64url encoder for test JWT tokens
-function makeTestJwt(payload) {
-  const header = Buffer.from(JSON.stringify({ alg: "RS256", typ: "JWT" })).toString('base64url');
+const TEST_KID = "fj-test-key";
+const TEST_CERT = fs.readFileSync(path.join(__dirname, "fixtures", "worker-test-cert.pem"), "utf8");
+const TEST_PRIVATE_KEY = fs.readFileSync(path.join(__dirname, "fixtures", "worker-test-private.pem"), "utf8");
+
+// Test ID tokens are genuinely signed by a test-only key. Never use this key in production.
+function makeTestJwt(payload, corruptSignature = false) {
+  const header = Buffer.from(JSON.stringify({ alg: "RS256", typ: "JWT", kid: TEST_KID })).toString('base64url');
   const body = Buffer.from(JSON.stringify(payload)).toString('base64url');
-  const sig = "test_signature";
+  let sig = crypto.sign("RSA-SHA256", Buffer.from(`${header}.${body}`), TEST_PRIVATE_KEY).toString('base64url');
+  if (corruptSignature) sig = `${sig.startsWith("A") ? "B" : "A"}${sig.slice(1)}`;
   return `${header}.${body}.${sig}`;
 }
 
 const OWNER_UID = "hDbzbNTC7pOuU2UFCjFksopbgaG3";
 const PROJECT_ID = "fj-website-384fd";
 
-const validOwnerToken = makeTestJwt({
+function makeClaims(overrides = {}) {
+  const now = Math.floor(Date.now() / 1000);
+  return {
   aud: PROJECT_ID,
   iss: `https://securetoken.google.com/${PROJECT_ID}`,
   sub: OWNER_UID,
-  exp: Math.floor(Date.now() / 1000) + 3600
-});
+    iat: now - 20,
+    auth_time: now - 60,
+    exp: now + 3600,
+    ...overrides
+  };
+}
+
+const validOwnerToken = makeTestJwt(makeClaims());
 
 const invalidAudToken = makeTestJwt({
-  aud: "wrong-project-id",
-  iss: `https://securetoken.google.com/${PROJECT_ID}`,
-  sub: OWNER_UID,
-  exp: Math.floor(Date.now() / 1000) + 3600
+  ...makeClaims({ aud: "wrong-project-id" })
 });
 
 const expiredToken = makeTestJwt({
-  aud: PROJECT_ID,
-  iss: `https://securetoken.google.com/${PROJECT_ID}`,
-  sub: OWNER_UID,
-  exp: Math.floor(Date.now() / 1000) - 3600 // Expired
+  ...makeClaims({ exp: Math.floor(Date.now() / 1000) - 3600 }) // Expired
 });
 
 const userToken = makeTestJwt({
-  aud: PROJECT_ID,
-  iss: `https://securetoken.google.com/${PROJECT_ID}`,
-  sub: "regular_user_123",
-  exp: Math.floor(Date.now() / 1000) + 3600
+  ...makeClaims({ sub: "regular_user_123" })
 });
 
 (async () => {
   console.log("=== WORKER BACKEND TEST SUITE ===\n");
+  const originalFetch = global.fetch;
+  global.fetch = async (input, init) => {
+    if (String(input) === "https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com") {
+      return new Response(JSON.stringify({ [TEST_KID]: TEST_CERT }), {
+        status: 200,
+        headers: { "Content-Type": "application/json", "Cache-Control": "public, max-age=300" }
+      });
+    }
+    return originalFetch(input, init);
+  };
   const workerModule = await import('../backend/worker.js');
   const worker = workerModule.default;
+
+  const allowedPreflight = await worker.fetch(new Request("https://api.local/api/notes/verify", {
+    method: "OPTIONS", headers: { Origin: "https://faissalness.github.io" }
+  }), {}, {});
+  assert.strictEqual(allowedPreflight.headers.get("Access-Control-Allow-Origin"), "https://faissalness.github.io");
+  const blockedPreflight = await worker.fetch(new Request("https://api.local/api/notes/verify", {
+    method: "OPTIONS", headers: { Origin: "null" }
+  }), {}, {});
+  assert.strictEqual(blockedPreflight.headers.get("Access-Control-Allow-Origin"), null);
 
   // 1. JWT Security Validation
   console.log("1. Testing Token Audience, Issuer, and Expiry Enforcement...");
@@ -74,6 +100,22 @@ const userToken = makeTestJwt({
   }), {}, {});
   assert.strictEqual(resExpired.status, 401, "Expired token must be rejected with 401");
 
+  const resForged = await worker.fetch(new Request("https://api.local/api/notes/verify", {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${makeTestJwt(makeClaims(), true)}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ password: "somePassword" })
+  }), {}, {});
+  assert.strictEqual(resForged.status, 401, "Correct claims with an invalid signature must be rejected");
+
+  const tamperedPayload = validOwnerToken.split('.');
+  tamperedPayload[1] = Buffer.from(JSON.stringify(makeClaims({ sub: "forged-owner" }))).toString('base64url');
+  const resTampered = await worker.fetch(new Request("https://api.local/api/notes/verify", {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${tamperedPayload.join('.')}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ password: "somePassword" })
+  }), {}, {});
+  assert.strictEqual(resTampered.status, 401, "Modified JWT claims must be rejected");
+
   // Test missing auth header
   const resNoAuth = await worker.fetch(new Request("https://api.local/api/notes/verify", {
     method: "POST",
@@ -81,6 +123,7 @@ const userToken = makeTestJwt({
     body: JSON.stringify({ password: "somePassword" })
   }), {}, {});
   assert.strictEqual(resNoAuth.status, 401, "Missing token must be rejected with 401");
+  assert.strictEqual(resNoAuth.headers.get("Cache-Control"), "no-store", "Authentication responses must not be cached");
   console.log(" PASS: Token audience, issuer, expiration, and header checks verified.");
 
   // 2. Shared Password Setup and Verification
@@ -162,4 +205,5 @@ const userToken = makeTestJwt({
   console.log(" PASS: Password rotation by owner revokes existing sessions and updates hash.");
 
   console.log("\n=== ALL WORKER BACKEND TESTS PASSED SUCCESSFULLY! ===");
+  global.fetch = originalFetch;
 })();
