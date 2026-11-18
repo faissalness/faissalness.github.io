@@ -2,6 +2,8 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/fireba
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, sendPasswordResetEmail, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 import { getFirestore, doc, setDoc, getDoc, collection, query, orderBy, onSnapshot, serverTimestamp, updateDoc } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 import { firebaseConfig, ownerUid } from "./firebase-config.js";
+import { generateQrMatrix, renderQrDataUrl } from "./qr-client.js";
+import { destinations } from "./destinations.js";
 
 const $ = selector => document.querySelector(selector);
 const status = $("#status");
@@ -165,7 +167,90 @@ function animateMagneticTiles() {
   }
 }
 
-// Local QR code loader (no external API calls)
+// Interactive Integrated FJ QR Code Generator
+let isGeneratingQr = false;
+
+async function fetchRandomWikipediaArticle() {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 3500);
+  try {
+    const res = await fetch("https://en.wikipedia.org/api/rest_v1/page/random/summary", {
+      signal: controller.signal,
+      headers: { "Accept": "application/json" }
+    });
+    clearTimeout(timeoutId);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    if (data && data.content_urls && data.content_urls.desktop && data.content_urls.desktop.page) {
+      return {
+        url: data.content_urls.desktop.page,
+        title: data.title || "Random Wikipedia Article"
+      };
+    }
+  } catch (err) {
+    // Network failure or offline: fallback to curated destinations list
+    console.warn("Wikipedia API unavailable, using local destination pool:", err.message);
+  } finally {
+    clearTimeout(timeoutId);
+  }
+
+  // Graceful fallback from local destinations list
+  if (Array.isArray(destinations) && destinations.length > 0) {
+    const randomUrl = destinations[Math.floor(Math.random() * destinations.length)];
+    const slug = randomUrl.split("/").pop().replace(/_/g, " ");
+    return {
+      url: randomUrl,
+      title: decodeURIComponent(slug)
+    };
+  }
+
+  return {
+    url: "https://en.wikipedia.org/wiki/Special:Random",
+    title: "Special: Random"
+  };
+}
+
+async function refreshRandomQr() {
+  if (isGeneratingQr) return;
+  isGeneratingQr = true;
+  const label = $("#article-label");
+  const image = $("#qr-image");
+  const qrDock = $("#qr-dock");
+
+  // Generate a new random colour from palette
+  changeLogoColor();
+  changeMonogramColor();
+  animateMagneticTiles();
+
+  if (label) label.textContent = "RETRIEVING RANDOM DESTINATION…";
+  if (qrDock) qrDock.style.transform = "translate(-50%, -50%) rotate(0deg) scale(0.95)";
+
+  try {
+    const article = await fetchRandomWikipediaArticle();
+    const matrix = generateQrMatrix(article.url, 4, 'M');
+    const svgDataUrl = renderQrDataUrl(matrix, "#0a0b0d", "#ffffff");
+
+    if (image) {
+      image.src = svgDataUrl;
+      image.alt = `Scan to open ${article.title}`;
+      image.dataset.destination = article.url;
+    }
+    if (label) {
+      label.textContent = `WIKIPEDIA / ${article.title.toUpperCase()}`;
+    }
+  } catch (error) {
+    console.error("QR Generation error:", error);
+    if (image) {
+      image.src = "qr.png";
+      image.dataset.destination = "https://en.wikipedia.org/wiki/Special:Random";
+    }
+    if (label) label.textContent = "RANDOM WIKIPEDIA DESTINATION";
+  } finally {
+    if (qrDock) qrDock.style.transform = "";
+    isGeneratingQr = false;
+  }
+}
+
 function loadQrCode() {
   const label = $("#article-label");
   const image = $("#qr-image");
@@ -174,6 +259,24 @@ function loadQrCode() {
   image.alt = "Scan to open a random Wikipedia article";
   image.dataset.destination = "https://en.wikipedia.org/wiki/Special:Random";
   if (label) label.textContent = "RANDOM WIKIPEDIA DESTINATION";
+
+  const qrDock = $("#qr-dock");
+  const markStage = $("#mark-stage");
+  if (qrDock && !qrDock.dataset.hasClickListener) {
+    qrDock.dataset.hasClickListener = "true";
+    qrDock.style.cursor = "pointer";
+    qrDock.title = "Click to generate a new random Wikipedia destination and color";
+    qrDock.addEventListener("click", event => {
+      event.stopPropagation();
+      refreshRandomQr();
+    });
+  }
+  if (markStage && !markStage.dataset.hasClickListener) {
+    markStage.dataset.hasClickListener = "true";
+    markStage.addEventListener("click", () => {
+      refreshRandomQr();
+    });
+  }
 }
 
 function openOwnerDrawer() { if ($("#owner-drawer")) $("#owner-drawer").hidden = false; }
@@ -393,7 +496,30 @@ if (!configured) {
               setBusy(button, false);
             }
           });
-          row.append(email, button);
+
+          const rejectBtn = document.createElement("button");
+          rejectBtn.type = "button";
+          rejectBtn.textContent = "Reject";
+          rejectBtn.style.marginLeft = "8px";
+          rejectBtn.style.color = "#ff71b8";
+          rejectBtn.addEventListener("click", async () => {
+            if (!confirm(`Reject access request for ${data.email}?`)) return;
+            setBusy(rejectBtn, true, "Rejecting…");
+            try {
+              await updateDoc(item.ref, {
+                status: "rejected",
+                deliveryStatus: "not_sent",
+                reviewedAt: serverTimestamp(),
+                reviewedBy: user.uid
+              });
+              showDrawerStatus(`Rejected request for ${data.email}. No email was sent.`, "info");
+            } catch (err) {
+              showDrawerStatus(`Could not reject: ${errorMessage(err)}`, "error");
+              setBusy(rejectBtn, false);
+            }
+          });
+
+          row.append(email, button, rejectBtn);
           list.append(row);
         }
       }, error => showDrawerStatus(`Could not load requests. ${errorMessage(error)}`, "error"));

@@ -19,9 +19,24 @@
     </nav>
   </header>
 
-  <!-- Initial mandatory gate text: exactly "you cannot come in here" -->
-  <div id="unauthorized-gate" class="gate-forbidden">
-    <p id="gate-text">you cannot come in here</p>
+  <!-- Initial mandatory gate text: exactly "you can't come in here" with persistent neon-green unlabeled password input -->
+  <div id="unauthorized-gate" class="gate-forbidden" aria-live="polite">
+    <div class="gate-lock-container">
+      <p id="gate-text" class="gate-message">you can't come in here</p>
+      <form id="notes-gate-form" class="gate-password-form" autocomplete="off">
+        <input 
+          type="password" 
+          id="notes-gate-password" 
+          class="neon-gate-input" 
+          aria-label="Notes access password"
+          autocomplete="current-password" 
+          spellcheck="false"
+          autocapitalize="off"
+          required
+        >
+        <div id="gate-feedback" class="gate-feedback-indicator" aria-live="polite"></div>
+      </form>
+    </div>
   </div>
 
   <!-- Main Protected Notes Section -->
@@ -113,6 +128,29 @@
       </form>
 
       <div id="admins-list" class="admins-list"></div>
+
+      <div class="drawer-divider" style="margin: 24px 0; border-top: 1px solid var(--line);"></div>
+      <h2>Shared Notes Password</h2>
+      <p class="card-copy">Configure or update the password required for all administrators and yourself to enter Notes. All existing sessions will be immediately revoked.</p>
+      <form id="change-shared-password-form" class="compact-form">
+        <label for="new-shared-password">New Shared Password</label>
+        <input type="password" id="new-shared-password" autocomplete="new-password" required minlength="6">
+        <label for="confirm-shared-password">Confirm New Password</label>
+        <input type="password" id="confirm-shared-password" autocomplete="new-password" required minlength="6">
+        <button type="submit" class="primary-button compact-btn">Update shared password <span>↗</span></button>
+        <p id="password-change-status" class="inline-status" role="status" aria-live="polite"></p>
+      </form>
+
+      <div class="drawer-divider" style="margin: 24px 0; border-top: 1px solid var(--line);"></div>
+      <h2>FJ Invitations</h2>
+      <p class="card-copy">Generate secure, single-use invitation tokens ending in "fj" for automatic registration approval.</p>
+      <form id="generate-invitation-form" class="compact-form">
+        <button type="submit" class="primary-button compact-btn">Generate FJ invitation <span>↗</span></button>
+        <div id="invitation-result-box" style="margin-top: 12px;" hidden>
+          <p class="micro-note">Copy and share this invitation token with the user:</p>
+          <input type="text" id="invitation-token-display" readonly style="width: 100%; height: 38px; background: #08090b; border: 1px solid var(--lime); color: var(--lime); font-family: var(--mono); padding: 0 10px; font-size: 11px;">
+        </div>
+      </form>
     </aside>
 
     <footer class="page-footer">

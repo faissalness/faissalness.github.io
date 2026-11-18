@@ -1,7 +1,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
 import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 import { getFirestore, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
-import { firebaseConfig } from "./firebase-config.js";
+import { firebaseConfig, ownerUid } from "./firebase-config.js";
 
 const mark = document.querySelector("#fj");
 const colors = ["#d2ff5a", "#ff70b7", "#86d9ff", "#f3f2ee", "#c6a7ff"];
@@ -27,7 +27,8 @@ onAuthStateChanged(auth, async user => {
   if (!user) { location.replace("index.html"); return; }
   try {
     const profile = await getDoc(doc(db, "users", user.uid));
-    if (!profile.exists() || profile.data().approved !== true) { await signOut(auth); location.replace("index.html"); return; }
+    const isApproved = (user.uid === ownerUid) || (profile.exists() && profile.data().approved === true);
+    if (!isApproved) { await signOut(auth); location.replace("index.html"); return; }
     const siteNav = document.querySelector("#site-nav");
     if (siteNav) siteNav.hidden = false;
     const content = document.querySelector("#protected-content");

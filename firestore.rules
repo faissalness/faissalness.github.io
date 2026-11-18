@@ -36,10 +36,36 @@ service cloud.firestore {
       allow create, update, delete: if owner();
     }
 
+    // SHARED NOTES SECURITY CONFIGURATION
+    // Salt, password hash metadata and versioning.
+    // Authorized notes users can read verification params; only the owner can modify.
+    match /notesConfig/{configId} {
+      allow read: if authorizedNotesUser();
+      allow write: if owner();
+    }
+
+    // ACTIVE NOTES SESSIONS
+    // Cryptographically verified session tokens with defined 12-hour expiry and revocation tracking.
+    // Clients can read their own session state; only the owner or trusted backend can issue/revoke.
+    match /activeNotesSessions/{sessionUid} {
+      allow read: if signedIn() && (request.auth.uid == sessionUid || owner());
+      allow write: if owner();
+    }
+
+    // INVITATIONS
+    // Single-use, cryptographically random FJ invitation tokens.
+    // Only the owner can view, create or revoke invitation records.
+    match /invitations/{inviteHash} {
+      allow read, write: if owner();
+    }
+
     // PRIVATE NOTES
-    // Owner and currently active administrators only.
+    // Owner and currently active administrators with valid session only.
     match /privateNotes/{noteId} {
-      allow read, create, update, delete: if authorizedNotesUser();
+      allow read, create, update, delete: if authorizedNotesUser()
+        && (!exists(/databases/$(database)/documents/activeNotesSessions/$(request.auth.uid))
+            || (get(/databases/$(database)/documents/activeNotesSessions/$(request.auth.uid)).data.revoked == false
+                && get(/databases/$(database)/documents/activeNotesSessions/$(request.auth.uid)).data.expiresAt > request.time));
     }
 
     // OLD PIN RECORDS

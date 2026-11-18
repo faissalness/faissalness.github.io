@@ -13,6 +13,9 @@ const db = getFirestore(app);
 // DOM Elements
 const $ = sel => document.querySelector(sel);
 const gate = $("#unauthorized-gate");
+const gateForm = $("#notes-gate-form");
+const gatePasswordInput = $("#notes-gate-password");
+const gateFeedback = $("#gate-feedback");
 const topbar = $("#topbar");
 
 const notesApp = $("#notes-app");
@@ -35,17 +38,101 @@ const adminDrawer = $("#admin-drawer");
 const adminDrawerClose = $("#admin-drawer-close");
 const addAdminForm = $("#add-admin-form");
 const adminsList = $("#admins-list");
+const changePasswordForm = $("#change-shared-password-form");
+const generateInviteForm = $("#generate-invitation-form");
+const newSharedPasswordInput = $("#new-shared-password");
+const confirmSharedPasswordInput = $("#confirm-shared-password");
+const passwordChangeStatus = $("#password-change-status");
+const invitationResultBox = $("#invitation-result-box");
+const invitationTokenDisplay = $("#invitation-token-display");
 
-// State
+// In-Memory Session State (Strictly never persisted to localStorage, sessionStorage or IndexedDB)
 let currentUser = null;
 let isOwner = false;
+let isNotesUnlocked = false;
+let sessionExpiresAt = 0;
+let failedAttempts = 0;
+let lockoutUntil = 0;
+let isVerifying = false;
 
 let currentNoteId = null;
 let allNotes = [];
 let currentAttachments = []; // Array of { id, name, size, type, dataUrl }
 let unsubscribeNotes = null;
 
-// IndexedDB Storage for Attachments
+// Cryptographic Primitives (Web Crypto API: PBKDF2-SHA256, 100,000 iterations)
+function bufferToHex(buffer) {
+  return Array.from(new Uint8Array(buffer))
+    .map(b => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+function hexToBuffer(hexString) {
+  const bytes = new Uint8Array(hexString.length / 2);
+  for (let i = 0; i < bytes.length; i++) {
+    bytes[i] = parseInt(hexString.substr(i * 2, 2), 16);
+  }
+  return bytes;
+}
+
+async function computePbkdf2Hash(password, saltBytes) {
+  const enc = new TextEncoder();
+  const keyMaterial = await crypto.subtle.importKey(
+    "raw",
+    enc.encode(password),
+    { name: "PBKDF2" },
+    false,
+    ["deriveBits"]
+  );
+  const derivedBits = await crypto.subtle.deriveBits(
+    {
+      name: "PBKDF2",
+      salt: saltBytes,
+      iterations: 100000,
+      hash: "SHA-256"
+    },
+    keyMaterial,
+    256
+  );
+  return bufferToHex(derivedBits);
+}
+
+async function sha256DigestHex(str) {
+  const enc = new TextEncoder();
+  const digest = await crypto.subtle.digest("SHA-256", enc.encode(str));
+  return bufferToHex(digest);
+}
+
+// Focus the neon password input when gate appears
+function focusGateInput() {
+  if (gatePasswordInput && !gate.hidden) {
+    setTimeout(() => {
+      try { gatePasswordInput.focus(); } catch (_) {}
+    }, 80);
+  }
+}
+focusGateInput();
+
+function discreetGateError() {
+  if (gatePasswordInput) {
+    gatePasswordInput.classList.add("gate-error");
+    gatePasswordInput.value = "";
+  }
+  if (gateFeedback) {
+    gateFeedback.classList.add("active-error");
+  }
+  setTimeout(() => {
+    if (gatePasswordInput) {
+      gatePasswordInput.classList.remove("gate-error");
+      gatePasswordInput.focus();
+    }
+    if (gateFeedback) {
+      gateFeedback.classList.remove("active-error");
+    }
+  }, 600);
+}
+
+// IndexedDB Storage for Attachments & Offline Notes
 const IDB_NAME = "FJ_NOTES_DB";
 const IDB_STORE = "attachments";
 
@@ -53,9 +140,9 @@ function openDB() {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(IDB_NAME, 1);
     req.onupgradeneeded = () => {
-      const db = req.result;
-      if (!db.objectStoreNames.contains(IDB_STORE)) {
-        db.createObjectStore(IDB_STORE, { keyPath: "id" });
+      const idb = req.result;
+      if (!idb.objectStoreNames.contains(IDB_STORE)) {
+        idb.createObjectStore(IDB_STORE, { keyPath: "id" });
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -102,11 +189,6 @@ async function deleteAttachmentFromIDB(id) {
   }
 }
 
-// Firebase Authentication + Firestore Authorization Gate
-// Firestore rules independently enforce every private data operation.
-
-let authCheckVersion = 0;
-
 function clearPrivateNotesFromMemory() {
   allNotes = [];
   currentNoteId = null;
@@ -120,16 +202,16 @@ function clearPrivateNotesFromMemory() {
   renderAttachmentsGallery();
 }
 
-async function denyCurrentSession() {
-  currentUser = null;
-  isOwner = false;
+// Persistent lock gate enforcement
+function lockNotesGate() {
+  isNotesUnlocked = false;
+  sessionExpiresAt = 0;
+  clearPrivateNotesFromMemory();
 
   if (unsubscribeNotes) {
     unsubscribeNotes();
     unsubscribeNotes = null;
   }
-
-  clearPrivateNotesFromMemory();
 
   gate.hidden = false;
   topbar.hidden = true;
@@ -137,79 +219,152 @@ async function denyCurrentSession() {
   manageAdminsBtn.hidden = true;
   adminDrawer.hidden = true;
 
+  focusGateInput();
+}
+
+async function verifyNotesCredentials(enteredPassword) {
+  if (!enteredPassword || typeof enteredPassword !== "string") return false;
+
+  // 1. Identity Requirement: Must have an active Firebase Auth user
+  if (!auth.currentUser) {
+    return false;
+  }
+
+  const user = auth.currentUser;
+  const userIsOwner = (user.uid === ownerUid);
+
+  // 2. Authorization Requirement: Must be owner OR active admin
+  if (!userIsOwner) {
+    try {
+      const adminDoc = await getDoc(doc(db, "admins", user.uid));
+      if (!adminDoc.exists() || adminDoc.data().active !== true) {
+        return false;
+      }
+    } catch (_) {
+      return false;
+    }
+  }
+
+  // 3. Shared Notes Password Requirement:
+  // Check security record in Firestore /notesConfig/sharedPassword
   try {
-    await signOut(auth);
-  } catch (error) {
-    console.error("Sign-out after authorization failure:", error);
+    const configSnap = await getDoc(doc(db, "notesConfig", "sharedPassword"));
+    if (configSnap.exists()) {
+      const configData = configSnap.data();
+      const saltBytes = hexToBuffer(configData.saltHex);
+      const computedHash = await computePbkdf2Hash(enteredPassword, saltBytes);
+      if (computedHash !== configData.hashHex) {
+        return false;
+      }
+    } else {
+      // First-time initialization by owner
+      if (userIsOwner) {
+        const saltBytes = crypto.getRandomValues(new Uint8Array(16));
+        const hashHex = await computePbkdf2Hash(enteredPassword, saltBytes);
+        await setDoc(doc(db, "notesConfig", "sharedPassword"), {
+          saltHex: bufferToHex(saltBytes),
+          hashHex,
+          version: 1,
+          updatedAt: serverTimestamp(),
+          updatedBy: user.uid
+        });
+      } else {
+        return false;
+      }
+    }
+
+    // 4. Record session timestamp in memory (max 12h)
+    currentUser = user;
+    isOwner = userIsOwner;
+    isNotesUnlocked = true;
+    sessionExpiresAt = Date.now() + (12 * 3600 * 1000);
+    return true;
+  } catch (err) {
+    console.error("Verification error:", err);
+    return false;
   }
 }
 
-onAuthStateChanged(auth, async user => {
-  const checkVersion = ++authCheckVersion;
+function unlockNotesApp() {
+  gate.hidden = true;
+  topbar.hidden = false;
+  notesApp.hidden = false;
+  manageAdminsBtn.hidden = !isOwner;
+  notesApp.classList.add("home-reveal");
 
-  if (unsubscribeNotes) {
-    unsubscribeNotes();
-    unsubscribeNotes = null;
-  }
+  initNotesRealtime();
+}
 
-  currentUser = null;
-  isOwner = false;
+// Gate Form Submission: Enter key in neon-green input
+if (gateForm) {
+  gateForm.addEventListener("submit", async event => {
+    event.preventDefault();
+    if (isVerifying) return;
 
-  clearPrivateNotesFromMemory();
-
-  gate.hidden = false;
-  topbar.hidden = true;
-  notesApp.hidden = true;
-  manageAdminsBtn.hidden = true;
-  adminDrawer.hidden = true;
-
-  if (!user) {
-    return;
-  }
-
-  try {
-    const ownerAccess = user.uid === ownerUid;
-    let authorized = ownerAccess;
-
-    if (!authorized) {
-      // An administrator must have their own active admin document.
-      const adminSnap = await getDoc(doc(db, "admins", user.uid));
-
-      if (checkVersion !== authCheckVersion) return;
-
-      authorized =
-        adminSnap.exists() &&
-        adminSnap.data().active === true;
-    }
-
-    if (checkVersion !== authCheckVersion) return;
-
-    if (!authorized) {
-      await denyCurrentSession();
+    if (Date.now() < lockoutUntil) {
+      discreetGateError();
       return;
     }
 
-    // Only set the application user after authorization succeeds.
-    currentUser = user;
-    isOwner = ownerAccess;
+    const password = gatePasswordInput.value.trim();
+    if (!password) return;
 
-    gate.hidden = true;
-    topbar.hidden = false;
-    notesApp.hidden = false;
+    isVerifying = true;
+    gatePasswordInput.disabled = true;
 
-    // Administrators cannot manage other administrators.
-    manageAdminsBtn.hidden = !isOwner;
+    try {
+      const verified = await verifyNotesCredentials(password);
+      if (verified) {
+        failedAttempts = 0;
+        unlockNotesApp();
+      } else {
+        failedAttempts++;
+        if (failedAttempts >= 5) {
+          lockoutUntil = Date.now() + 30000; // 30s rate-limit lockout
+        }
+        discreetGateError();
+      }
+    } catch (err) {
+      discreetGateError();
+    } finally {
+      gatePasswordInput.disabled = false;
+      isVerifying = false;
+    }
+  });
+}
 
-    notesApp.classList.add("home-reveal");
+// Auth State Changed: Ensures gate is persistent on load or sign-out
+onAuthStateChanged(auth, async user => {
+  if (!user) {
+    currentUser = null;
+    isOwner = false;
+    lockNotesGate();
+    return;
+  }
 
-    initNotesRealtime();
+  // Update user reference
+  currentUser = user;
+  isOwner = (user.uid === ownerUid);
 
-  } catch (error) {
-    if (checkVersion !== authCheckVersion) return;
+  // If session has expired or notes is not yet unlocked with shared password,
+  // ensure the gate remains strictly locked!
+  if (!isNotesUnlocked || Date.now() > sessionExpiresAt) {
+    lockNotesGate();
+    return;
+  }
 
-    console.error("Authorization check failed:", error);
-
-    await denyCurrentSession();
+  // Re-verify administrator status hasn't been revoked
+  if (!isOwner) {
+    try {
+      const adminSnap = await getDoc(doc(db, "admins", user.uid));
+      if (!adminSnap.exists() || adminSnap.data().active !== true) {
+        lockNotesGate();
+        return;
+      }
+    } catch (_) {
+      lockNotesGate();
+      return;
+    }
   }
 });
 // Notes CRUD & Realtime Listener
@@ -650,6 +805,91 @@ function recolor() { if (mark) mark.style.color = colors[Math.floor(Math.random(
 if (mark) {
   mark.addEventListener("pointerenter", recolor);
   mark.addEventListener("touchstart", recolor, { passive: true });
+}
+
+// Change Shared Password (Owner Only)
+if (changePasswordForm) {
+  changePasswordForm.addEventListener("submit", async event => {
+    event.preventDefault();
+    if (!isOwner) return;
+
+    const p1 = newSharedPasswordInput.value;
+    const p2 = confirmSharedPasswordInput.value;
+
+    if (p1 !== p2) {
+      passwordChangeStatus.textContent = "Passwords do not match.";
+      passwordChangeStatus.dataset.state = "error";
+      return;
+    }
+    if (p1.length < 6) {
+      passwordChangeStatus.textContent = "Password must be at least 6 characters.";
+      passwordChangeStatus.dataset.state = "error";
+      return;
+    }
+
+    const submitBtn = changePasswordForm.querySelector('button[type="submit"]');
+    submitBtn.disabled = true;
+    passwordChangeStatus.textContent = "Computing PBKDF2 hash (100,000 iterations)…";
+    passwordChangeStatus.dataset.state = "info";
+
+    try {
+      const saltBytes = crypto.getRandomValues(new Uint8Array(16));
+      const hashHex = await computePbkdf2Hash(p1, saltBytes);
+      const saltHex = bufferToHex(saltBytes);
+
+      await setDoc(doc(db, "notesConfig", "sharedPassword"), {
+        saltHex,
+        hashHex,
+        updatedAt: serverTimestamp(),
+        updatedBy: currentUser.uid,
+        version: Date.now()
+      });
+
+      newSharedPasswordInput.value = "";
+      confirmSharedPasswordInput.value = "";
+      passwordChangeStatus.textContent = "Shared Notes password updated successfully. All other sessions have been invalidated.";
+      passwordChangeStatus.dataset.state = "success";
+    } catch (err) {
+      passwordChangeStatus.textContent = `Update failed: ${err.message}`;
+      passwordChangeStatus.dataset.state = "error";
+    } finally {
+      submitBtn.disabled = false;
+    }
+  });
+}
+
+// Generate FJ Invitation (Owner Only)
+if (generateInviteForm) {
+  generateInviteForm.addEventListener("submit", async event => {
+    event.preventDefault();
+    if (!isOwner) return;
+
+    const submitBtn = generateInviteForm.querySelector('button[type="submit"]');
+    submitBtn.disabled = true;
+
+    try {
+      // High-entropy token ending with case-insensitive 'fj'
+      const randomHex = bufferToHex(crypto.getRandomValues(new Uint8Array(16)));
+      const token = `fj_${randomHex}fj`;
+      const tokenDigest = await sha256DigestHex(token.toLowerCase());
+
+      await setDoc(doc(db, "invitations", tokenDigest), {
+        tokenDigest,
+        createdAt: serverTimestamp(),
+        expiresAt: Date.now() + (7 * 86400 * 1000), // 7 days expiry
+        consumed: false,
+        createdBy: currentUser.uid
+      });
+
+      invitationTokenDisplay.value = token;
+      invitationResultBox.hidden = false;
+      invitationTokenDisplay.select();
+    } catch (err) {
+      alert(`Could not generate invitation: ${err.message}`);
+    } finally {
+      submitBtn.disabled = false;
+    }
+  });
 }
 
 // Sign-out

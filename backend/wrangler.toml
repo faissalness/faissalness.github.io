@@ -1,0 +1,8 @@
+name = "fj-api"
+main = "worker.js"
+compatibility_date = "2024-09-23"
+
+# 100% Free Plan Configuration
+# Zero Billing / No Paid Features / Genuinely Free Tier
+[placement]
+mode = "smart"

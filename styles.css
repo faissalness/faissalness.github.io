@@ -40,7 +40,16 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:1px solid var(-
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
 
 /* Notes and PIN Gate Styles */
-.gate-forbidden{display:grid;place-items:center;min-height:85vh;color:#8c8d91;font:14px var(--mono);letter-spacing:.06em;user-select:none}
+.gate-forbidden{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:85vh;color:#8c8d91;font:14px var(--mono);letter-spacing:.06em;user-select:none;padding:20px}
+.gate-lock-container{display:flex;flex-direction:column;align-items:center;gap:20px;width:min(280px,90vw)}
+.gate-message{margin:0;color:#8c8d91;font-size:14px;letter-spacing:.08em;text-align:center}
+.gate-password-form{width:100%;display:flex;flex-direction:column;align-items:center}
+.neon-gate-input{width:100%;max-width:240px;height:42px;padding:0 14px;background:#050608;border:1px solid var(--lime);border-radius:2px;color:var(--lime);caret-color:var(--lime);font:16px var(--mono);text-align:center;letter-spacing:.25em;outline:none;box-shadow:0 0 12px rgba(203,255,89,.22),inset 0 0 8px rgba(203,255,89,.06);transition:border-color .25s,box-shadow .25s,transform .15s}
+.neon-gate-input:focus{border-color:#e5ff99;box-shadow:0 0 20px rgba(203,255,89,.45),inset 0 0 12px rgba(203,255,89,.12)}
+.neon-gate-input.gate-error{border-color:#ff5964;color:#ff5964;caret-color:#ff5964;box-shadow:0 0 16px rgba(255,89,100,.35);animation:gate-shake .4s ease-in-out}
+@keyframes gate-shake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-6px)}40%,80%{transform:translateX(6px)}}
+.gate-feedback-indicator{height:5px;width:5px;border-radius:50%;margin-top:10px;opacity:0;transition:opacity .3s,background-color .3s}
+.gate-feedback-indicator.active-error{opacity:1;background:#ff5964;box-shadow:0 0 8px #ff5964}
 .pin-modal{position:fixed;inset:0;z-index:20;background:rgba(2,2,3,0.92);backdrop-filter:blur(8px);display:grid;place-items:center;padding:20px}
 .pin-card{width:min(420px,100%);padding:clamp(24px,4vw,40px);border:1px solid #232427;background:linear-gradient(145deg,#0a0b0d,#040506);box-shadow:0 24px 80px rgba(0,0,0,0.8);position:relative}
 .pin-card:before{content:"";position:absolute;width:16px;height:16px;left:-1px;top:-1px;border-top:1px solid var(--lime);border-left:1px solid var(--lime)}

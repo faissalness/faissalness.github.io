@@ -82,13 +82,30 @@ exports.handleAccessRequest = async (event) => {
 
       try {
         // Validate that user exists in Firebase Auth
-        await admin.auth().getUserByEmail(normalizedEmail);
+        const userRecord = await admin.auth().getUserByEmail(normalizedEmail);
 
-        // User exists: initiate password reset
+        // Check if account supports password auth or is federated-only
+        const hasPasswordAuth = !userRecord.providerData || userRecord.providerData.length === 0 || 
+          userRecord.providerData.some(p => p.providerId === 'password');
+
+        if (!hasPasswordAuth) {
+          await docRef.update({
+            status: 'ACTION_REQUIRED',
+            error: 'Account uses federated sign-in only. Password reset is not applicable.',
+            deliveryStatus: 'skipped',
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+          });
+          return;
+        }
+
+        const idempotencyKey = `${doc.id}_v${data.approvalVersion || 1}_pwd_reset`;
+
+        // User exists & eligible: initiate password reset
         await docRef.update({
           status: 'approved',
           normalizedEmail,
           deliveryStatus: 'sending',
+          idempotencyKey,
           approvedAt: admin.firestore.FieldValue.serverTimestamp()
         });
 
@@ -98,17 +115,19 @@ exports.handleAccessRequest = async (event) => {
 
         await docRef.update({
           deliveryStatus: 'sent',
+          firebaseAccepted: true,
           deliveryTimestamp: admin.firestore.FieldValue.serverTimestamp(),
           updatedAt: admin.firestore.FieldValue.serverTimestamp()
         });
       } catch (authError) {
         console.error(`Error processing email ${normalizedEmail}:`, authError);
+        const isTemporary = authError.code === 'auth/network-timeout' || authError.code === 'auth/internal-error';
         await docRef.update({
-          status: 'rejected',
+          status: isTemporary ? 'pending' : 'rejected',
           error: authError.code === 'auth/user-not-found' 
             ? 'Firebase Authentication account does not exist' 
             : (authError.message || 'Authentication error'),
-          deliveryStatus: 'failed',
+          deliveryStatus: isTemporary ? 'DELIVERY_UNKNOWN' : 'failed',
           updatedAt: admin.firestore.FieldValue.serverTimestamp()
         });
       }
