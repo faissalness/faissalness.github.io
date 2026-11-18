@@ -233,17 +233,9 @@ async function verifyNotesCredentials(enteredPassword) {
   const user = auth.currentUser;
   const userIsOwner = (user.uid === ownerUid);
 
-  // 2. Authorization Requirement: Must be owner OR active admin
-  if (!userIsOwner) {
-    try {
-      const adminDoc = await getDoc(doc(db, "admins", user.uid));
-      if (!adminDoc.exists() || adminDoc.data().active !== true) {
-        return false;
-      }
-    } catch (_) {
-      return false;
-    }
-  }
+  // The original Notes store is owner-only. Administrators for personal Notes
+  // applications must never inherit access to the owner's private records.
+  if (!userIsOwner) return false;
 
   // 3. Shared Notes Password Requirement:
   // Check security record in Firestore /notesConfig/sharedPassword
@@ -353,19 +345,7 @@ onAuthStateChanged(auth, async user => {
     return;
   }
 
-  // Re-verify administrator status hasn't been revoked
-  if (!isOwner) {
-    try {
-      const adminSnap = await getDoc(doc(db, "admins", user.uid));
-      if (!adminSnap.exists() || adminSnap.data().active !== true) {
-        lockNotesGate();
-        return;
-      }
-    } catch (_) {
-      lockNotesGate();
-      return;
-    }
-  }
+  if (!isOwner) lockNotesGate();
 });
 // Notes CRUD & Realtime Listener
 function initNotesRealtime() {

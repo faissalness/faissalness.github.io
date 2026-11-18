@@ -7,23 +7,28 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function verifiedAccount() {
+      return signedIn() && request.auth.token.email_verified == true;
+    }
+
     function owner() {
       return signedIn()
         && request.auth.uid == 'hDbzbNTC7pOuU2UFCjFksopbgaG3';
     }
 
-    function isActiveAdmin() {
-      return signedIn()
-        && exists(
-          /databases/$(database)/documents/admins/$(request.auth.uid)
-        )
-        && get(
-          /databases/$(database)/documents/admins/$(request.auth.uid)
-        ).data.active == true;
+    function authorizedNotesUser() {
+      // The original Notes collection is exclusively the owner's application.
+      // User-to-user administration belongs in separate per-user storage.
+      return owner();
     }
 
-    function authorizedNotesUser() {
-      return owner() || isActiveAdmin();
+    function validYourNote(data) {
+      return data.keys().hasOnly(['title', 'content', 'createdAt', 'updatedAt'])
+        && data.title is string
+        && data.title.size() <= 160
+        && data.content is string
+        && data.content.size() <= 20000
+        && data.updatedAt == request.time;
     }
 
     // ADMINISTRATORS
@@ -38,18 +43,17 @@ service cloud.firestore {
 
     // SHARED NOTES SECURITY CONFIGURATION
     // Salt, password hash metadata and versioning.
-    // Authorized notes users can read verification params; only the owner can modify.
+    // Only the owner can read or modify the owner's Notes gate configuration.
     match /notesConfig/{configId} {
-      allow read: if authorizedNotesUser();
+      allow read: if owner();
       allow write: if owner();
     }
 
     // ACTIVE NOTES SESSIONS
-    // Cryptographically verified session tokens with defined 12-hour expiry and revocation tracking.
-    // Clients can read their own session state; only the owner or trusted backend can issue/revoke.
+    // Only a trusted Admin SDK backend may issue or revoke session records.
     match /activeNotesSessions/{sessionUid} {
       allow read: if signedIn() && (request.auth.uid == sessionUid || owner());
-      allow write: if owner();
+      allow write: if false;
     }
 
     // INVITATIONS
@@ -60,12 +64,13 @@ service cloud.firestore {
     }
 
     // PRIVATE NOTES
-    // Owner and currently active administrators with valid session only.
+    // Owner-only private Notes. The owner identity remains the actual database boundary.
     match /privateNotes/{noteId} {
       allow read, create, update, delete: if authorizedNotesUser()
-        && (!exists(/databases/$(database)/documents/activeNotesSessions/$(request.auth.uid))
-            || (get(/databases/$(database)/documents/activeNotesSessions/$(request.auth.uid)).data.revoked == false
-                && get(/databases/$(database)/documents/activeNotesSessions/$(request.auth.uid)).data.expiresAt > request.time));
+        && exists(/databases/$(database)/documents/activeNotesSessions/$(request.auth.uid))
+        && get(/databases/$(database)/documents/activeNotesSessions/$(request.auth.uid)).data.uid == request.auth.uid
+        && get(/databases/$(database)/documents/activeNotesSessions/$(request.auth.uid)).data.revoked == false
+        && get(/databases/$(database)/documents/activeNotesSessions/$(request.auth.uid)).data.expiresAt > request.time;
     }
 
     // OLD PIN RECORDS
@@ -124,6 +129,20 @@ service cloud.firestore {
           ]);
 
       allow delete: if owner();
+    }
+
+    // Each Your Notes user has a separate UID-scoped private notes tree.
+    // No client can list another account's data or promote itself through note fields.
+    match /yourNotes/{userUid}/notes/{noteId} {
+      allow read, delete: if verifiedAccount() && request.auth.uid == userUid;
+      allow create: if verifiedAccount()
+        && request.auth.uid == userUid
+        && validYourNote(request.resource.data)
+        && request.resource.data.createdAt == request.time;
+      allow update: if verifiedAccount()
+        && request.auth.uid == userUid
+        && validYourNote(request.resource.data)
+        && request.resource.data.createdAt == resource.data.createdAt;
     }
 
     // All other collections and documents are denied by default.

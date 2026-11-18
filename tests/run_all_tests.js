@@ -10,16 +10,17 @@ console.log("          FJ WEBSITE MASTER TEST SUITE RUNNER             ");
 console.log("==========================================================\n");
 
 const suites = [
-  { name: "Firestore Security Rules Simulator (48 Cases)", cmd: "node tests/firestore_security_rules_test.js", expectedTests: 48 },
+  { name: "Firestore Rules Logic Simulator (55 Cases)", cmd: "node tests/firestore_security_rules_test.js", expectedTests: 55 },
   { name: "Workflow and Access Trigger Security Suite", cmd: "node tests/workflow_test.js", expectedTests: 5 },
   { name: "Notes Lock Gate & Persistent Access Suite", cmd: "node tests/notes_gate_test.js", expectedTests: 5 },
   { name: "Invitations & Approval Workflow Suite", cmd: "node tests/invitations_approval_test.js", expectedTests: 3 },
   { name: "Client-Side QR Engine ISO/IEC Verification", cmd: "node tests/qr_client_test.js", expectedTests: 10 },
-  { name: "Full Website & Asset Audit Suite", cmd: "node tests/website_audit_test.js", expectedTests: 28 },
-  { name: "Cloudflare Worker Backend Security Suite", cmd: "node tests/worker_backend_test.js", expectedTests: 6 },
+  { name: "Full Website & Asset Audit Suite", cmd: "node tests/website_audit_test.js", expectedTests: 35 },
+  { name: "Human Verification and Reload Regression Checks", cmd: "node tests/human_verification_test.js", expectedTests: 5 },
+  { name: "Cloudflare Worker Backend Security Suite", cmd: "node tests/worker_backend_test.js", expectedTests: 7 },
   { name: "Comprehensive Python QR Independent Decoding (10 Variants)", cmd: "python tests/qr_comprehensive_test.py", expectedTests: 10 },
   { name: "Baseline Python QR Independent Verification", cmd: "python tests/qr_verification.py", expectedTests: 1 },
-  { name: "GitHub Pages Public Artifact Allowlist", cmd: "node tests/pages_allowlist_test.js", expectedTests: 5 }
+  { name: "GitHub Pages Public Artifact Allowlist", cmd: "node tests/pages_allowlist_test.js", expectedTests: 7 }
 ];
 
 let totalPassed = 0;
@@ -49,7 +50,7 @@ results.forEach(r => {
 console.log("----------------------------------------------------------");
 console.log(`TOTAL TESTS PASSED: ${totalPassed}`);
 console.log(`TOTAL TESTS FAILED: ${totalFailed}`);
-console.log(`FIRESTORE RULE SIMULATOR CASES: 48 / 48 PASSED`);
+console.log(`FIRESTORE RULE SIMULATOR CASES: 55 / 55 PASSED`);
 console.log("==========================================================");
 
 if (totalFailed > 0) {

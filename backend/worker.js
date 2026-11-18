@@ -195,7 +195,13 @@ export default {
         }
 
         const uid = payload.sub;
-        const isOwner = (uid === OWNER_UID);
+        if (uid !== OWNER_UID) {
+          return new Response(JSON.stringify({ error: "Access denied" }), {
+            status: 403,
+            headers: { ...corsHeaders, "Content-Type": "application/json" }
+          });
+        }
+        const isOwner = true;
 
         // Rate limiting check
         const clientIp = request.headers.get("CF-Connecting-IP") || "local";

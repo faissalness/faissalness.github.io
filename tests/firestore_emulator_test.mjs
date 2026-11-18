@@ -1,0 +1,74 @@
+import assert from 'node:assert/strict';
+import { createRequire } from 'node:module';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const deps = process.env.FJ_TEST_DEPS;
+if (!deps) throw new Error('Set FJ_TEST_DEPS to the directory containing emulator test dependencies.');
+const require = createRequire(path.join(deps, 'package.json'));
+const { initializeTestEnvironment, assertFails, assertSucceeds } = require('@firebase/rules-unit-testing');
+const { collection, deleteDoc, doc, getDoc, getDocs, serverTimestamp, setDoc, Timestamp, updateDoc } = require('firebase/firestore');
+
+const projectId = 'demo-fj-website-384fd';
+const rules = fs.readFileSync(path.join(root, 'firestore.rules'), 'utf8');
+const environment = await initializeTestEnvironment({ projectId, firestore: { rules } });
+let passed = 0;
+const check = async (name, operation, assertion) => {
+  await assertion(operation);
+  passed += 1;
+  console.log(`[PASS] ${name}`);
+};
+
+try {
+  await environment.clearFirestore();
+  const alice = environment.authenticatedContext('alice', { email_verified: true }).firestore();
+  const bob = environment.authenticatedContext('bob', { email_verified: true }).firestore();
+  const unverified = environment.authenticatedContext('unverified', { email_verified: false }).firestore();
+  const admin = environment.authenticatedContext('admin-a', { email_verified: true }).firestore();
+  const owner = environment.authenticatedContext('hDbzbNTC7pOuU2UFCjFksopbgaG3').firestore();
+  const anonymous = environment.unauthenticatedContext().firestore();
+  const notePath = (db, uid, id) => doc(db, 'yourNotes', uid, 'notes', id);
+  const note = { title: 'Private', content: 'Alice only', createdAt: serverTimestamp(), updatedAt: serverTimestamp() };
+
+  await check('Verified account creates its own note', setDoc(notePath(alice, 'alice', 'one'), note), assertSucceeds);
+  await check('Verified account reads its own note', getDoc(notePath(alice, 'alice', 'one')), assertSucceeds);
+  await check('Other account cannot read the note by guessed ID', getDoc(notePath(bob, 'alice', 'one')), assertFails);
+  await check("Other account cannot list the owner's notes", getDocs(collection(bob, 'yourNotes', 'alice', 'notes')), assertFails);
+  await check("Other account cannot create under the owner's UID", setDoc(notePath(bob, 'alice', 'forged'), note), assertFails);
+  await check('Unverified email cannot read its own notes', getDoc(notePath(unverified, 'unverified', 'one')), assertFails);
+  await check('Anonymous access is denied', getDoc(notePath(anonymous, 'alice', 'one')), assertFails);
+  await check('Role injection into note fields is denied', setDoc(notePath(alice, 'alice', 'role'), { ...note, role: 'owner' }), assertFails);
+  await check('A user cannot update an existing note with a forged owner path', updateDoc(notePath(bob, 'alice', 'one'), { content: 'stolen' }), assertFails);
+
+  await environment.withSecurityRulesDisabled(async context => {
+    await setDoc(doc(context.firestore(), 'admins', 'admin-a'), { uid: 'admin-a', active: true });
+    await setDoc(doc(context.firestore(), 'privateNotes', 'owner-secret'), { title: 'Owner private' });
+    await setDoc(doc(context.firestore(), 'activeNotesSessions', 'hDbzbNTC7pOuU2UFCjFksopbgaG3'), {
+      uid: 'hDbzbNTC7pOuU2UFCjFksopbgaG3', revoked: false, expiresAt: Timestamp.fromMillis(Date.now() + 60_000)
+    });
+  });
+  await check("Active admin cannot read owner's private Notes", getDoc(doc(admin, 'privateNotes', 'owner-secret')), assertFails);
+  await check("Ordinary user cannot read owner's private Notes", getDoc(doc(alice, 'privateNotes', 'owner-secret')), assertFails);
+  await check("Owner with a trusted active session can read private Notes", getDoc(doc(owner, 'privateNotes', 'owner-secret')), assertSucceeds);
+  await environment.withSecurityRulesDisabled(async context => {
+    await deleteDoc(doc(context.firestore(), 'activeNotesSessions', 'hDbzbNTC7pOuU2UFCjFksopbgaG3'));
+  });
+  await check('Owner without an issued session cannot read private Notes', getDoc(doc(environment.authenticatedContext('hDbzbNTC7pOuU2UFCjFksopbgaG3').firestore(), 'privateNotes', 'missing')), assertFails);
+  await check('Owner cannot forge a trusted session from browser', setDoc(doc(owner, 'activeNotesSessions', 'hDbzbNTC7pOuU2UFCjFksopbgaG3'), {
+    uid: 'hDbzbNTC7pOuU2UFCjFksopbgaG3', revoked: false, expiresAt: Timestamp.fromMillis(Date.now() + 60_000)
+  }), assertFails);
+  await check('Owner can edit own Your Notes while retaining createdAt', (async () => {
+    const ref = notePath(alice, 'alice', 'one');
+    const existing = (await getDoc(ref)).data();
+    return updateDoc(ref, { title: 'Edited', content: 'Updated', createdAt: existing.createdAt, updatedAt: serverTimestamp() });
+  })(), assertSucceeds);
+  await check('Owner can delete own Your Notes', deleteDoc(notePath(alice, 'alice', 'one')), assertSucceeds);
+  await check('Admin cannot create owner authorization records', setDoc(doc(admin, 'admins', 'admin-b'), { active: true }), assertFails);
+
+  console.log(`FIRESTORE EMULATOR: ${passed}/17 passed`);
+  assert.equal(passed, 17);
+} finally {
+  await environment.cleanup();
+}

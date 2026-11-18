@@ -33,8 +33,8 @@ jobs:
           set -euo pipefail
           mkdir -p dist
           for file in \
-            index.html meet.html gods.html notes.html random.html qr.html \
-            app.js private-page.js notes.js random.js qr-client.js qr-tech.js qr-url.js destinations.js \
+            index.html meet.html gods.html notes.html random.html qr.html pip.html \
+            app.js private-page.js notes.js pip.js random.js qr-client.js qr-tech.js qr-url.js destinations.js \
             firebase-config.js styles.css favicon.svg qr.png random-qr.png; do
             test -f "$file"
             cp -- "$file" dist/
@@ -47,6 +47,9 @@ jobs:
             cp -- "$route.html" "dist/$route/index.html"
             sed -i '/<head>/a\  <base href="/">' "dist/$route/index.html"
           done
+          mkdir -p dist/pip
+          cp -- pip.html dist/pip/index.html
+          sed -i '/<head>/a\  <base href="/">' dist/pip/index.html
           if find dist -type f \( -iname '*.map' -o -iname '*worker*' -o -iname '*serviceaccount*' \) | grep -q .; then
             echo "Unexpected backend or source-map file in public artifact" >&2
             exit 1

@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#020203">
+  <meta name="description" content="PIP and Your Notes — a private space for your own notes.">
+  <title>PIP and Your Notes 04 — FJ</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css?v=20261118-1">
+</head>
+<body class="site-body">
+  <header class="topbar">
+    <a class="site-mark" href="/" aria-label="FJ home">FJ</a>
+    <nav class="site-nav" aria-label="FJ pages">
+      <a href="/meet/">Meet me <span>01</span></a>
+      <a href="/gods/">To the gods <span>02</span></a>
+      <a href="/notes/">Notes <span>03</span></a>
+      <a href="/pip/" aria-current="page">PIP + Notes <span>04</span></a>
+      <a href="/qr/">QR-tech <span>05</span></a>
+    </nav>
+  </header>
+  <main class="pip-page">
+    <div id="pip-status" class="status" role="status" aria-live="polite" hidden></div>
+    <section id="pip-auth" class="pip-auth">
+      <p class="eyebrow">FJ / PRIVATE FREQUENCY / 04</p>
+      <h1>PIP and<br><span>Your Notes.</span></h1>
+      <p class="pip-copy">A private notes space for your account.</p>
+      <div class="pip-auth-grid">
+        <form id="pip-login-form" class="auth-card">
+          <p class="card-index">01 / RETURNING</p><h2>Sign in</h2>
+          <label for="pip-login-email">Email</label><input id="pip-login-email" type="email" autocomplete="username" required>
+          <label for="pip-login-password">Password</label><input id="pip-login-password" type="password" autocomplete="current-password" required>
+          <button class="primary-button" type="submit">Sign in <span>↗</span></button>
+          <button class="text-button pip-reset" id="pip-reset" type="button">Send password reset link</button>
+        </form>
+        <form id="pip-register-form" class="auth-card">
+          <p class="card-index">02 / FIRST VISIT</p><h2>Create account</h2>
+          <label for="pip-register-name">Your name</label><input id="pip-register-name" autocomplete="name" maxlength="60" required>
+          <label for="pip-register-email">Email</label><input id="pip-register-email" type="email" autocomplete="email" required>
+          <label for="pip-register-password">Password</label><input id="pip-register-password" type="password" autocomplete="new-password" minlength="8" required>
+          <button class="primary-button" type="submit">Create account <span>↗</span></button>
+        </form>
+      </div>
+    </section>
+    <section id="pip-verify" class="pip-verify" hidden>
+      <p class="eyebrow">CHECK YOUR INBOX</p><h1>Verify your<br><span>email.</span></h1>
+      <p class="pip-copy">Open the verification link sent to your email address, then return here.</p>
+      <div class="pip-verify-actions"><button id="pip-check-verified" class="primary-button" type="button">I verified my email <span>↻</span></button><button id="pip-resend-verification" class="text-button" type="button">Send another link</button><button id="pip-verify-sign-out" class="text-button" type="button">Sign out</button></div>
+    </section>
+    <section id="pip-notes" class="pip-notes" hidden>
+      <div class="pip-heading"><div><p class="eyebrow">YOUR PRIVATE SPACE</p><h1 id="pip-welcome">Your Notes.</h1></div><button id="pip-sign-out" class="text-button" type="button">Sign out ↗</button></div>
+      <div class="pip-notes-layout">
+        <aside class="pip-note-list-panel"><div class="pip-list-heading"><h2>Notes</h2><button class="compact-btn primary-button" id="pip-new-note" type="button">New note +</button></div><div id="pip-note-list" class="pip-note-list" aria-live="polite"></div></aside>
+        <form id="pip-note-form" class="pip-editor">
+          <div class="pip-editor-heading"><input id="pip-note-title" class="note-title-input" maxlength="160" placeholder="Untitled note" aria-label="Note title"><button id="pip-delete-note" class="compact-btn danger-btn" type="button" hidden>Delete</button></div>
+          <textarea id="pip-note-content" class="note-textarea pip-textarea" maxlength="20000" placeholder="Write something…" aria-label="Note content"></textarea>
+          <div class="pip-editor-footer"><span id="pip-save-status" class="save-indicator" role="status" aria-live="polite"></span><button class="primary-button compact-btn" id="pip-save-note" type="submit">Save note <span>↗</span></button></div>
+        </form>
+      </div>
+      <p class="micro-note">Your notes are scoped to your signed-in account.</p>
+    </section>
+    <footer class="page-footer"><a href="/">← Back to the signal</a><span>PIP / NOTES 004</span></footer>
+  </main>
+  <script type="module" src="pip.js?v=20261118-1"></script>
+</body>
+</html>

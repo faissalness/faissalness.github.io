@@ -121,7 +121,11 @@ function humanChallenge() {
       humanGate.hidden = true;
       authShell.hidden = false;
       authShell.classList.add("auth-reveal");
-      $("#sign-in-email")?.focus();
+      if (window.fjHasAuthenticatedSession) {
+        window.location.reload();
+      } else {
+        $("#sign-in-email")?.focus();
+      }
     }, 220);
   });
 }
@@ -410,11 +414,21 @@ if (!configured) {
   onAuthStateChanged(auth, async user => {
     if (requestInProgress) return;
     if (!user) {
+      window.fjHasAuthenticatedSession = false;
       $("#private-home").hidden = true;
       $("#site-nav").hidden = true;
       if ($("#owner-drawer")) $("#owner-drawer").hidden = true;
       $("#human-gate").hidden = sessionStorage.getItem("fj-human-check") === "passed";
       $("#auth-shell").hidden = sessionStorage.getItem("fj-human-check") !== "passed";
+      document.body.classList.remove("auth-pending");
+      return;
+    }
+    window.fjHasAuthenticatedSession = true;
+    if (sessionStorage.getItem("fj-human-check") !== "passed") {
+      $("#private-home").hidden = true;
+      $("#site-nav").hidden = true;
+      $("#auth-shell").hidden = true;
+      $("#human-gate").hidden = false;
       document.body.classList.remove("auth-pending");
       return;
     }

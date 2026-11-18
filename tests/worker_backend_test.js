@@ -154,6 +154,13 @@ const userToken = makeTestJwt({
   assert.ok(dataInit.expiresAt > Date.now(), "Session must have 12h future expiry");
   console.log(" PASS: Owner password initialization and session token issuance verified.");
 
+  const resAdminVerify = await worker.fetch(new Request("https://api.local/api/notes/verify", {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${userToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ password: initialPassword })
+  }), {}, {});
+  assert.strictEqual(resAdminVerify.status, 403, "Non-owner identity must never unlock the owner's private Notes");
+
   // Correct password verification
   const resVerifySuccess = await worker.fetch(new Request("https://api.local/api/notes/verify", {
     method: "POST",

@@ -1,6 +1,6 @@
 /**
  * Firestore Security Rules Emulator Test Suite
- * 48 Comprehensive Security Rule Test Cases
+ * Firestore rules logic simulator: 55 access-control and schema cases
  * 
  * Tests default-deny, role-based access control, owner authority,
  * active vs revoked administrators, user account constraints,
@@ -12,7 +12,7 @@ const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
 
-console.log("=== FIRESTORE EMULATOR SECURITY RULES TEST SUITE (48 TESTS) ===\n");
+console.log("=== FIRESTORE RULES LOGIC SIMULATOR (55 CASES) ===\n");
 
 // Read and verify firestore.rules exists and is valid syntax
 const rulesPath = path.join(__dirname, '..', 'firestore.rules');
@@ -72,19 +72,14 @@ class RulesSimulator {
     const signedIn = Boolean(auth && auth.uid);
     const owner = signedIn && auth.uid === OWNER_UID;
 
-    const isActiveAdmin = () => {
-      if (!signedIn) return false;
-      const adminRec = this.db.admins[auth.uid];
-      return Boolean(adminRec && adminRec.active === true);
-    };
-
-    const authorizedNotesUser = () => owner || isActiveAdmin();
+    const authorizedNotesUser = () => owner;
+    const verifiedAccount = () => signedIn && auth.emailVerified === true;
 
     const hasValidNotesSession = () => {
       if (!authorizedNotesUser()) return false;
       const session = this.db.activeNotesSessions[auth.uid];
-      if (!session) return true; // Session doc not required if backend manages in-memory
-      return session.revoked === false && session.expiresAt > requestTime;
+      if (!session) return false;
+      return session.uid === auth.uid && session.revoked === false && session.expiresAt > requestTime;
     };
 
     // 1. Administrators collection
@@ -121,7 +116,7 @@ class RulesSimulator {
     // 5. Active Notes Sessions collection
     if (collection === 'activeNotesSessions') {
       if (operation === 'read') return signedIn && (auth.uid === docId || owner);
-      if (['create', 'update', 'delete'].includes(operation)) return owner;
+      if (['create', 'update', 'delete'].includes(operation)) return false;
       return false;
     }
 
@@ -179,6 +174,26 @@ class RulesSimulator {
       return false;
     }
 
+    // 9. Per-user private notes; the UID is taken from the path and auth context.
+    if (collection === 'yourNotes' && parts.length === 4 && parts[2] === 'notes') {
+      const ownsPath = verifiedAccount() && auth.uid === parts[1];
+      if (!ownsPath) return false;
+      if (operation === 'read' || operation === 'delete') return true;
+      if (!data || !Array.isArray(Object.keys(data))) return false;
+      const keys = Object.keys(data);
+      const allowed = ['title', 'content', 'createdAt', 'updatedAt'];
+      const valid = keys.every(key => allowed.includes(key))
+        && typeof data.title === 'string' && data.title.length <= 160
+        && typeof data.content === 'string' && data.content.length <= 20000
+        && data.updatedAt === requestTime;
+      if (operation === 'create') return valid && data.createdAt === requestTime;
+      if (operation === 'update') {
+        const old = resource || {};
+        return valid && data.createdAt === old.createdAt;
+      }
+      return false;
+    }
+
     // All other collections: default deny
     return false;
   }
@@ -186,7 +201,7 @@ class RulesSimulator {
 
 const sim = new RulesSimulator(mockDb);
 let passedCount = 0;
-let totalCount = 48;
+let totalCount = 55;
 
 function runTest(num, name, condition) {
   assert.ok(condition, `Test ${num} FAILED: ${name}`);
@@ -217,8 +232,8 @@ runTest(5, "Revoked administrator read private notes -> DENIED",
 runTest(6, "Revoked administrator write private notes -> DENIED",
   sim.evaluate({ auth: { uid: ADMIN_UID_REVOKED }, path: "privateNotes/note_1", operation: "update", data: {} }) === false);
 
-runTest(7, "Active administrator with active session read private notes -> ALLOWED",
-  sim.evaluate({ auth: { uid: ADMIN_UID_ACTIVE }, path: "privateNotes/note_1", operation: "read" }) === true);
+runTest(7, "Active administrator cannot read the owner's private notes -> DENIED",
+  sim.evaluate({ auth: { uid: ADMIN_UID_ACTIVE }, path: "privateNotes/note_1", operation: "read" }) === false);
 
 runTest(8, "Owner with active session read private notes -> ALLOWED",
   sim.evaluate({ auth: { uid: OWNER_UID }, path: "privateNotes/note_1", operation: "read" }) === true);
@@ -343,8 +358,8 @@ runTest(45, "Client read of retired userSecurity records -> DENIED",
   sim.evaluate({ auth: { uid: USER_UID }, path: `userSecurity/${USER_UID}`, operation: "read" }) === false);
 
 // SECTION 10: CONFIG, INVITATIONS & DEFAULT-DENY (Tests 46 - 48)
-runTest(46, "Authorized notes user reading shared password config -> ALLOWED",
-  sim.evaluate({ auth: { uid: ADMIN_UID_ACTIVE }, path: "notesConfig/sharedPassword", operation: "read" }) === true);
+runTest(46, "Administrator cannot read the owner's shared password configuration -> DENIED",
+  sim.evaluate({ auth: { uid: ADMIN_UID_ACTIVE }, path: "notesConfig/sharedPassword", operation: "read" }) === false);
 
 runTest(47, "Ordinary user reading or writing invitations -> DENIED",
   sim.evaluate({ auth: { uid: USER_UID }, path: "invitations/invite_hash_1", operation: "read" }) === false);
@@ -352,5 +367,26 @@ runTest(47, "Ordinary user reading or writing invitations -> DENIED",
 runTest(48, "Access to undefined/unmatched collection -> DENIED (Default Deny)",
   sim.evaluate({ auth: { uid: OWNER_UID }, path: "unknownCollection/doc_1", operation: "read" }) === false);
 
+runTest(49, "Your Notes owner reads own account-scoped note -> ALLOWED",
+  sim.evaluate({ auth: { uid: USER_UID, emailVerified: true }, path: `yourNotes/${USER_UID}/notes/n1`, operation: "read" }) === true);
+
+runTest(50, "Your Notes user cannot read another UID's note -> DENIED",
+  sim.evaluate({ auth: { uid: USER_UID, emailVerified: true }, path: `yourNotes/${OTHER_USER_UID}/notes/n1`, operation: "read" }) === false);
+
+runTest(51, "Your Notes user creates a valid note under own UID -> ALLOWED",
+  sim.evaluate({ auth: { uid: USER_UID, emailVerified: true }, path: `yourNotes/${USER_UID}/notes/n2`, operation: "create", requestTime: 100, data: { title: "Private", content: "Only me", createdAt: 100, updatedAt: 100 } }) === true);
+
+runTest(52, "Your Notes user cannot write role fields into note records -> DENIED",
+  sim.evaluate({ auth: { uid: USER_UID, emailVerified: true }, path: `yourNotes/${USER_UID}/notes/n3`, operation: "create", requestTime: 100, data: { title: "Bad", content: "", createdAt: 100, updatedAt: 100, role: "owner" } }) === false);
+
+runTest(53, "Unverified email cannot read its own Your Notes records -> DENIED",
+  sim.evaluate({ auth: { uid: USER_UID, emailVerified: false }, path: `yourNotes/${USER_UID}/notes/n1`, operation: "read" }) === false);
+
+runTest(54, "Owner without a trusted active Notes session is denied -> DENIED",
+  (() => { delete sim.db.activeNotesSessions[OWNER_UID]; return sim.evaluate({ auth: { uid: OWNER_UID }, path: "privateNotes/note_1", operation: "read" }) === false; })());
+
+runTest(55, "Owner browser cannot create or forge a Notes session -> DENIED",
+  sim.evaluate({ auth: { uid: OWNER_UID }, path: `activeNotesSessions/${OWNER_UID}`, operation: "create", data: { uid: OWNER_UID, expiresAt: Date.now() + 100000, revoked: false } }) === false);
+
 console.log(`\n=== FIRESTORE RULES VERIFICATION RESULT: ${passedCount} / ${totalCount} PASSED ===`);
-assert.strictEqual(passedCount, 48, "All 48 Firestore security emulator tests must pass!");
+assert.strictEqual(passedCount, 55, "All 55 Firestore rules simulator cases must pass!");

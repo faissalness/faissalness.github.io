@@ -2,60 +2,50 @@
 
 Updated: 2026-11-18 (Europe/Stockholm)
 
-## Current repository state
+## Repository
 
-- Repository: `C:\Users\faiss\OneDrive\Desktop\FJ-website`
-- Local commits through `614badb` are on `main` and synchronized with `origin/main`.
-- Existing untracked user files and backups were preserved.
-- The current implementation adds the QR-tech 05 page and clean aliases, auth-pending first-paint handling, and verified-identity enforcement on invitation redemption. Pre-existing untracked files and backups remain untouched.
+- Existing project: `C:\Users\faiss\OneDrive\Desktop\FJ-website`.
+- `2cca634` is on `main` and `origin/main`.
+- Current PIP, owner-only Notes, verified-email policy, and related test changes are uncommitted. Pre-existing user files, backups, and local state remain untouched.
 
-## Tests and local build
+## Latest local checks
 
-- `node tests/run_all_tests.js`: 121 checks passed, 0 failed after the current changes (including independently decoded JavaScript QR output and destination safety cases).
-- `node --check` passed for `app.js`, `notes.js`, `qr-tech.js`, `random.js`, and `backend/worker.js`.
-- `git diff --check` passed (only Git's line-ending normalization warnings were printed).
-- The 48 Firestore cases are simulator checks, not Firebase emulator tests.
-- Wrangler dry-run produced a local Worker bundle.
-- `git diff --check` passed before the commits.
+- `node tests/run_all_tests.js`: 143 passed, 0 failed. This includes 55 Firestore logic simulator cases, 10 independent QR decodes, and the deployment allowlist suite.
+- Firestore Local Emulator Suite: 17/17 actual rules-unit tests passed, including UID isolation, role injection, owner session expiry/absence, and browser-forged session rejection. The test script passed; Firebase CLI exits 1 afterward due its local update-check/config-store error.
+- Syntax checks passed for `app.js`, `notes.js`, `pip.js`, `qr-tech.js`, `qr-url.js`, and `backend/worker.js`.
+- `git diff --check` passed.
+- QR test independently decoded the JavaScript-generated QR matrix to the exact test URL and covers unsafe URL rejection.
+- PIP page was visually checked at 390px mobile width; navigation, sign-in and account creation cards fit the viewport.
 
-## Confirmed production state
+## Production evidence
 
-- GitHub Pages was switched to GitHub Actions and the allowlist workflow was manually triggered (run `44388959526`, completed successfully at SHA `614badb3`).
-- `https://faissalness.github.io` returned HTTP 200 and contained the favicon link.
-- Cache-busted `https://faissalness.github.io/backend/worker.js` and `/firestore.rules` returned GitHub 404 pages; neither response contained backend source. `/backend/wrangler.toml` returned a generic 503 response without source. Recheck after future publishes.
-- `https://faissalness.github.io/notes` and `/notes.html` returned the Notes HTML.
-- `https://fj-api.jimyass.workers.dev` returned HTTP 200 with `{"status":"FJ API Operational"}` after the Worker update.
-- The Worker signature fix was deployed using Wrangler. A production POST with owner claims, a real Google key ID, and a 256-byte invalid signature returns HTTP 401 with `Cache-Control: no-store`. The site origin is allowed by CORS; `Origin: null` is not.
-- The allowlisted Pages deployment removed the confirmed Worker source leak at `/backend/worker.js`.
-- Local `firestore.rules` allows Notes reads when the active session document is missing. That fallback remains unchanged until a functioning persistent server-issued session path exists.
+- Latest public GitHub Pages Actions run for `2cca634` completed successfully. Live homepage and `/qr/` return 200. `/backend/worker.js`, `/backend/worker.js.map`, and `/firestore.rules` return 404. `/pip/` remains 404 because the local PIP implementation has not been published.
+- Live Worker root returns HTTP 200 `{"status":"FJ API Operational"}`. A fresh production forgery probe used correct project claims, a real Google key ID, and an invalid 256-byte signature; Worker returned HTTP 401, `{"error":"Access denied"}`, `Cache-Control: no-store`.
+- Firebase rules deployment printed compile, release and `Deploy complete` after closing the missing-session and client-writable-session bypasses. The CLI still exits 1 after deployment because its local update-check/config store fails. Production unauthenticated REST probes for `privateNotes`, `activeNotesSessions`, and `yourNotes` all return 403 `PERMISSION_DENIED`.
 
-## Local fixes completed
+## Work implemented locally
 
-- Worker authentication now verifies Firebase `RS256` signatures using Google's X.509 public certificates and validates issuer, audience, expiry, issue time, auth time, not-before (when present), and subject.
-- Worker API CORS is restricted to the website origin and private responses disable caching.
-- Added `.github/workflows/deploy-pages.yml` with a static public artifact allowlist excluding backend source, rules, tests, backups, and local state.
-- Updated the FJ favicon to lowercase white `fj`, linked it across pages, and corrected capitalization and color of the Notes gate text.
-- Added forged/tampered-token tests and a Pages allowlist test; labeled Firestore cases accurately as simulator checks.
-- Added a standalone QR-tech 05 interface with validated HTTPS Wikipedia/Wikimedia/Reddit destinations, scan-friendly high contrast and quiet zone, refresh, and SVG download; Pages now emits `/qr/`, `/meet/`, `/gods/`, and `/notes/` directory routes.
-- Changed primary site navigation to clean routes and removed the homepage QR widget in favor of the dedicated QR page.
-- Suppressed gated homepage content during Firebase's initial auth resolution and removed the reload flash animation trigger.
-- Invitation redemption now requires a cryptographically verified Firebase ID token and derives the consumer UID from verified token claims, never the request body. Added forged/missing identity coverage.
+- Added QR-tech 05, safe HTTPS destination validation, SVG download, clean `/qr/` route, and clean route aliases for Meet, Gods, and Notes.
+- Added auth-pending first-paint suppression and removed the authenticated reload flash; same-tab verification survives reload and new tabs require verification.
+- Invitation redemption now requires a cryptographically verified Firebase ID token and uses its UID rather than a caller-provided UID.
+- Original owner Notes and its shared-password configuration are restricted to the owner; Worker Notes verification rejects non-owner Firebase identities. The missing-session bypass is now closed; trusted persistent session issuance is still not connected to Firestore.
+- Firestore now fails closed: a missing active-session document no longer grants access, and browser clients can no longer create, update, or delete session records. A trusted Admin SDK session issuer is not connected, so original owner Notes is unavailable until that backend is implemented and deployed. The current Worker still has isolate-local state and is not an adequate persistent session issuer.
+- Added PIP / Your Notes registration, sign-in, email verification, generic reset response, duplicate-account message, and per-UID note CRUD. Firestore rules scope each account to its own notes. Separate app passwords, note-level passwords, administrators for personal applications, scheduled account deletion, user count, and Post It Pal are still outstanding.
 
-## Authentication and deployment
+## Deployment access
 
-- Firebase CLI can list active project `fj-website-384fd`.
-- Wrangler confirms an active OAuth session for the Cloudflare account containing `fj-api`.
-- The available shell in this continuation has Git and Node but no `gh`, `wrangler`, or `firebase` CLI on PATH; check local/browser auth before production deploy actions.
-- Current code changes have not yet been committed, pushed, or deployed.
-- The Pages workflow and prior Worker deployment completed. Firebase rules have not been deployed.
+- GitHub Pages workflow source is configured for GitHub Actions. The user pushed `2cca634`, which deployed successfully in the prior run.
+- Firebase CLI is available at `%APPDATA%\npm\firebase.cmd`; it reports expired credentials but compiled and released the current ruleset. Its nonzero post-run state still needs repair before future deployment actions.
+- Wrangler 4 was installed using `npx`. `wrangler whoami` reports the Cloudflare OAuth token expired. The Cloudflare dashboard opens to its sign-in page; no current authenticated Cloudflare browser session was found.
+- Latest local changes have not been committed, pushed, or published. Git credential helper access is still unavailable in this shell.
 
-## Remaining work
+## Next operations
 
-1. Commit and push the current QR/navigation/auth first-paint and Worker invitation changes, then wait for and inspect the Pages deployment and live clean routes.
-2. Implement durable Notes sessions, connect them to protected data access, then enforce strict Firestore session rules. Add actual Firebase emulator tests.
-3. Implement the remaining requested Your Notes, account, administrator, scheduled deletion, public user count, Post It Pal, and account isolation with server-enforced authorization.
-4. Deploy Firebase rules and Worker changes and verify production authorization, data isolation, QR output, and source exposure.
+1. Replace Worker isolate-local password/session/invitation maps with a durable free-tier backend and connect trusted session issuance to Firestore before restoring owner Notes access.
+2. Implement the uncompleted separate Your Notes password, account administration, account deletion scheduler, public user count, Post It Pal, attachments security, approval email job, and remaining master requirements.
+3. Reauthenticate Cloudflare, deploy and verify the corrected Worker; the current live Worker is still the previously deployed version.
+4. Commit/push all local changes and wait for the next Pages workflow; then verify `/pip/` and every published feature.
 
-## Completion status
+## Completion
 
-Incomplete. Previously deployed Worker signature verification rejected a forged token with HTTP 401 and no-store, and the allowlisted Pages deployment removed the `/backend/worker.js` source exposure. The current 113-check suite passes locally. Current code changes are not yet deployed; the Firestore missing-session fallback, durable Notes sessions, Your Notes, administrator workflow, deletion scheduler, user count, Post It Pal, Firebase rules deployment, and complete production verification remain outstanding.
+Incomplete. Production source routes are no longer accessible, forged tokens are rejected, and the tightened Firestore rules are released. The current GitHub Pages live version does not include local PIP work. The Worker still needs a durable backend and redeployment, original Notes is fail-closed pending trusted session issuance, multiple required features remain unimplemented, and end-to-end production acceptance has not passed.

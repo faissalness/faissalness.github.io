@@ -8,8 +8,8 @@ const allowlistSection = workflow.split('for file in \\\n')[1]?.split('; do')[0]
 assert.ok(allowlistSection, 'Pages workflow must use an explicit public file allowlist');
 const allowlist = allowlistSection.replace(/\\/g, '').trim().split(/\s+/).filter(Boolean);
 const required = [
-  'index.html', 'meet.html', 'gods.html', 'notes.html', 'random.html', 'qr.html',
-  'app.js', 'private-page.js', 'notes.js', 'random.js', 'qr-client.js', 'qr-tech.js', 'qr-url.js',
+  'index.html', 'meet.html', 'gods.html', 'notes.html', 'random.html', 'qr.html', 'pip.html',
+  'app.js', 'private-page.js', 'notes.js', 'pip.js', 'random.js', 'qr-client.js', 'qr-tech.js', 'qr-url.js',
   'destinations.js', 'firebase-config.js', 'styles.css', 'favicon.svg', 'qr.png'
 ];
 
@@ -21,5 +21,7 @@ assert.ok(allowlist.every(file => !/(worker|firestore\.rules|wrangler|\.map|back
 assert.ok(allowlist.every(file => fs.existsSync(path.join(root, file))), 'Every allowlisted file must exist');
 assert.ok(workflow.includes("-iname '*.map'") && workflow.includes("-iname '*worker*'"),
   'Build must fail if worker or source-map files appear in the public artifact');
+assert.ok(workflow.includes('cp -- pip.html dist/pip/index.html') && workflow.includes('cp -- qr.html dist/qr/index.html'),
+  'The PIP and QR clean routes must be included in the published artifact');
 
-console.log('=== PAGES PUBLIC ARTIFACT ALLOWLIST: 5 / 5 PASSED ===');
+console.log('=== PAGES PUBLIC ARTIFACT ALLOWLIST: 7 / 7 PASSED ===');

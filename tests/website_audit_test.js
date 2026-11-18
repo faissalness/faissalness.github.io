@@ -15,7 +15,7 @@ const path = require('path');
 console.log("=== FULL WEBSITE AUDIT & ASSET VERIFICATION SUITE ===\n");
 
 const ROOT = path.join(__dirname, '..');
-const HTML_FILES = ['index.html', 'meet.html', 'gods.html', 'notes.html', 'random.html', 'qr.html'];
+const HTML_FILES = ['index.html', 'meet.html', 'gods.html', 'notes.html', 'random.html', 'qr.html', 'pip.html'];
 let passedAudits = 0;
 
 // 1. Verify existence of all HTML files
@@ -63,6 +63,16 @@ assert.ok(qrPage.includes('<h1>QR-tech <span>05</span></h1>') && qrPage.includes
   'QR-tech 05 must have a dedicated page and load its generator');
 assert.ok(fs.readFileSync(path.join(ROOT, '.github', 'workflows', 'deploy-pages.yml'), 'utf8').includes('dist/qr/index.html'),
   'Pages workflow must publish the clean /qr/ route');
+const pipPage = fs.readFileSync(path.join(ROOT, 'pip.html'), 'utf8');
+const pipScript = fs.readFileSync(path.join(ROOT, 'pip.js'), 'utf8');
+assert.ok(pipPage.includes('PIP and<br><span>Your Notes.</span>') && pipScript.includes('Account already exists.') && pipScript.includes('sendEmailVerification'),
+  'PIP and Notes 04 must expose registration, verified email, reset, and duplicate-account handling');
+assert.ok(pipScript.includes('collection(db, "yourNotes", uid, "notes")') && fs.readFileSync(path.join(ROOT, 'firestore.rules'), 'utf8').includes('match /yourNotes/{userUid}/notes/{noteId}'),
+  'Your Notes must use UID-scoped storage with a matching Firestore authorization rule');
+passedAudits += 2;
+assert.ok(fs.readFileSync(path.join(ROOT, 'firestore.rules'), 'utf8').includes('request.auth.token.email_verified == true'),
+  'Your Notes rules must require verified Firebase email identity');
+passedAudits++;
 passedAudits += 2;
 console.log(" PASS: Core assets (qr.png, favicon.svg, styles.css) exist and are valid.");
 
