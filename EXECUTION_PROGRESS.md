@@ -5,7 +5,7 @@ Updated: 2026-11-18 (Europe/Stockholm)
 ## Current repository state
 
 - Repository: `C:\Users\faiss\OneDrive\Desktop\FJ-website`
-- Branch `main` is based on commit `878a589`.
+- Local checkpoint commit: `89a81b6` on `main`, one commit ahead of `origin/main`.
 - Existing untracked user files and backups were preserved.
 - Local changes are present in the Worker, Pages workflow, favicon, Notes gate text/styles, tests, and this progress record. No production services were changed.
 
@@ -37,16 +37,17 @@ Updated: 2026-11-18 (Europe/Stockholm)
 
 - Firebase CLI sign-in is present but its token is expired. `firebase projects:list` fails with “credentials are no longer valid”; reauthentication is required.
 - Wrangler is available through `npx`, but its Cloudflare authorization is expired. `wrangler whoami` requires `wrangler login` or a Cloudflare API token. Do not paste an API token into chat.
-- Git Credential Manager is configured. Write access to GitHub is not yet verified.
-- No service deployment or commit has been made.
+- Git Credential Manager is configured, but its helper failed in this environment during a safe push dry-run; GitHub write access is not verified.
+- The local checkpoint commit has not been pushed. No service deployment has been made.
 
 ## Remaining work
 
 1. Authenticate Firebase CLI by running `firebase login --reauth` and complete the Google account flow.
 2. Authenticate Wrangler by running `npx wrangler login` and complete the Cloudflare authorization flow for the account containing `fj-api`.
-3. Implement durable Notes sessions, connect them to data access, and then enforce strict Firestore session rules. Add actual Firebase emulator tests.
-4. Implement the remaining requested Your Notes, account, administrator, scheduled deletion, public user count, Post It Pal, QR-tech, and interface features with server-enforced authorization.
-5. Deploy Firebase rules, Worker, and Pages; verify invalid tokens are rejected and the Pages backend-source URL no longer discloses source.
+3. Push the local checkpoint (`git push origin main`) from an authenticated Git shell so the allowlisted Pages workflow can run.
+4. Implement durable Notes sessions, connect them to data access, and then enforce strict Firestore session rules. Add actual Firebase emulator tests.
+5. Implement the remaining requested Your Notes, account, administrator, scheduled deletion, public user count, Post It Pal, QR-tech, and interface features with server-enforced authorization.
+6. Deploy Firebase rules, Worker, and Pages; verify invalid tokens are rejected and the Pages backend-source URL no longer discloses source.
 
 ## Completion status
 
