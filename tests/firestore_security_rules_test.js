@@ -1,6 +1,6 @@
 /**
  * Firestore Security Rules Emulator Test Suite
- * Firestore rules logic simulator: 55 access-control and schema cases
+ * Firestore rules logic simulator: 57 access-control and schema cases
  * 
  * Tests default-deny, role-based access control, owner authority,
  * active vs revoked administrators, user account constraints,
@@ -12,7 +12,7 @@ const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
 
-console.log("=== FIRESTORE RULES LOGIC SIMULATOR (55 CASES) ===\n");
+console.log("=== FIRESTORE RULES LOGIC SIMULATOR (57 CASES) ===\n");
 
 // Read and verify firestore.rules exists and is valid syntax
 const rulesPath = path.join(__dirname, '..', 'firestore.rules');
@@ -48,6 +48,7 @@ const mockDb = {
   privateNotes: {
     "note_1": { title: "Secrets", authorUid: OWNER_UID }
   },
+  yourNotes: {},
   notesConfig: {
     "sharedPassword": { saltHex: "abcdef", hashHex: "123456" }
   },
@@ -178,7 +179,11 @@ class RulesSimulator {
     if (collection === 'yourNotes' && parts.length === 4 && parts[2] === 'notes') {
       const ownsPath = verifiedAccount() && auth.uid === parts[1];
       if (!ownsPath) return false;
-      if (operation === 'read' || operation === 'delete') return true;
+      const account = this.db.yourNotes[parts[1]];
+      const active = !account || account.deletionStatus === 'active';
+      const due = account?.deletionStatus === 'ready';
+      if (operation === 'read' || operation === 'delete') return active || due;
+      if (!active) return false;
       if (!data || !Array.isArray(Object.keys(data))) return false;
       const keys = Object.keys(data);
       const allowed = ['title', 'content', 'createdAt', 'updatedAt'];
@@ -201,7 +206,7 @@ class RulesSimulator {
 
 const sim = new RulesSimulator(mockDb);
 let passedCount = 0;
-let totalCount = 55;
+let totalCount = 57;
 
 function runTest(num, name, condition) {
   assert.ok(condition, `Test ${num} FAILED: ${name}`);
@@ -388,5 +393,11 @@ runTest(54, "Owner without a trusted active Notes session is denied -> DENIED",
 runTest(55, "Owner browser cannot create or forge a Notes session -> DENIED",
   sim.evaluate({ auth: { uid: OWNER_UID }, path: `activeNotesSessions/${OWNER_UID}`, operation: "create", data: { uid: OWNER_UID, expiresAt: Date.now() + 100000, revoked: false } }) === false);
 
+runTest(56, "Personal notes are locked during account deletion grace period -> DENIED",
+  (() => { sim.db.yourNotes[USER_UID] = { deletionStatus: "scheduled", deletionAt: Date.now() + 86400000 }; return sim.evaluate({ auth: { uid: USER_UID, emailVerified: true }, path: `yourNotes/${USER_UID}/notes/n1`, operation: "read" }) === false; })());
+
+runTest(57, "Personal notes are available for confirmed deletion after the grace period -> ALLOWED",
+  (() => { sim.db.yourNotes[USER_UID] = { deletionStatus: "ready", deletionAt: Date.now() - 1 }; return sim.evaluate({ auth: { uid: USER_UID, emailVerified: true }, path: `yourNotes/${USER_UID}/notes/n1`, operation: "delete" }) === true; })());
+
 console.log(`\n=== FIRESTORE RULES VERIFICATION RESULT: ${passedCount} / ${totalCount} PASSED ===`);
-assert.strictEqual(passedCount, 55, "All 55 Firestore rules simulator cases must pass!");
+assert.strictEqual(passedCount, 57, "All 57 Firestore rules simulator cases must pass!");

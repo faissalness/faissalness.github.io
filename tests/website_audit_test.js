@@ -72,6 +72,11 @@ assert.ok(pipPage.includes('PIP and<br><span>Your Notes.</span>') && pipScript.i
   'PIP and Notes 04 must expose registration, verified email, reset, and duplicate-account handling');
 assert.ok(pipScript.includes('collection(db, "yourNotes", uid, "notes")') && fs.readFileSync(path.join(ROOT, 'firestore.rules'), 'utf8').includes('match /yourNotes/{userUid}/notes/{noteId}'),
   'Your Notes must use UID-scoped storage with a matching Firestore authorization rule');
+assert.ok(pipPage.includes('Schedule 30-day account deletion') && pipPage.includes('Cancel scheduled deletion')
+  && pipPage.includes('Permanently delete account') && pipScript.includes('reauthenticateWithCredential')
+  && pipScript.includes('deletionStatus'),
+  'PIP account deletion must require reauthentication, enforce a grace period, and support cancellation');
+passedAudits++;
 passedAudits += 2;
 assert.ok(fs.readFileSync(path.join(ROOT, 'firestore.rules'), 'utf8').includes('request.auth.token.email_verified == true'),
   'Your Notes rules must require verified Firebase email identity');

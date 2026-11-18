@@ -1,6 +1,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
-import { createUserWithEmailAndPassword, getAuth, onAuthStateChanged, sendEmailVerification, sendPasswordResetEmail, signInWithEmailAndPassword, signOut, updateProfile } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
-import { addDoc, collection, deleteDoc, doc, getFirestore, onSnapshot, orderBy, query, serverTimestamp, updateDoc } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+import { createUserWithEmailAndPassword, deleteUser, EmailAuthProvider, getAuth, onAuthStateChanged, reauthenticateWithCredential, sendEmailVerification, sendPasswordResetEmail, signInWithEmailAndPassword, signOut, updateProfile } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+import { addDoc, collection, deleteDoc, doc, documentId, getDoc, getDocs, getFirestore, limit, onSnapshot, orderBy, query, serverTimestamp, setDoc, startAfter, Timestamp, updateDoc, writeBatch } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 import { firebaseConfig } from "./firebase-config.js";
 
 const $ = selector => document.querySelector(selector);
@@ -12,6 +12,7 @@ let selectedId = null;
 let unsubscribe = null;
 let notes = [];
 let emailVerificationUser = null;
+let accountDeletion = null;
 
 function status(message, kind = "info") {
   const box = $("#pip-status");
@@ -71,6 +72,111 @@ function watchNotes(user) {
     renderNotes();
   }, error => status(error.code === "permission-denied" ? "Your account cannot access this notes collection." : "Could not load notes. Check your connection and retry.", "error"));
 }
+
+async function syncAccountLifecycle(user) {
+  const accountRef = doc(db, "yourNotes", user.uid);
+  const snapshot = await getDoc(accountRef);
+  accountDeletion = snapshot.exists() ? snapshot.data() : null;
+  const scheduled = ["scheduled", "ready"].includes(accountDeletion?.deletionStatus);
+  const deletionTime = accountDeletion?.deletionAt?.toDate?.() || null;
+  let due = accountDeletion?.deletionStatus === "ready" || Boolean(deletionTime && deletionTime.getTime() <= Date.now());
+  if (accountDeletion?.deletionStatus === "scheduled" && due) {
+    await updateDoc(accountRef, { deletionStatus: "ready", deletionReadyAt: serverTimestamp() });
+    accountDeletion = { ...accountDeletion, deletionStatus: "ready" };
+  }
+  const statusNode = $("#pip-deletion-status");
+  const scheduleButton = $("#pip-schedule-deletion");
+  const cancelButton = $("#pip-cancel-deletion");
+  const finalizePanel = $("#pip-finalize-deletion");
+  const notesLayout = $("#pip-notes-layout");
+
+  if (scheduled) {
+    statusNode.textContent = `Deletion requested. Your notes are locked until ${deletionTime?.toLocaleString() || "the end of the 30-day grace period"}. Sign in after that date and confirm to permanently delete your account and notes.`;
+    scheduleButton.hidden = true;
+    cancelButton.hidden = !deletionTime || due;
+    finalizePanel.hidden = !due;
+    notesLayout.hidden = true;
+    unsubscribe?.();
+    unsubscribe = null;
+    notes = [];
+    selectedId = null;
+    renderNotes();
+  } else {
+    statusNode.textContent = "Your account is active. You can request deletion with a 30-day grace period.";
+    scheduleButton.hidden = false;
+    cancelButton.hidden = true;
+    finalizePanel.hidden = true;
+    notesLayout.hidden = false;
+    if (!unsubscribe) watchNotes(user);
+  }
+}
+
+$("#pip-schedule-deletion").addEventListener("click", async () => {
+  if (!activeUser || !confirm("Schedule account deletion? Your notes will be locked now. You can cancel for 30 days, then sign in again and confirm permanent deletion.")) return;
+  const button = $("#pip-schedule-deletion");
+  button.disabled = true;
+  try {
+    const now = Date.now();
+    await setDoc(doc(db, "yourNotes", activeUser.uid), {
+      deletionStatus: "scheduled",
+      deletionRequestedAt: serverTimestamp(),
+      deletionAt: Timestamp.fromMillis(now + 30 * 24 * 60 * 60 * 1000)
+    });
+    await syncAccountLifecycle(activeUser);
+  } catch { status("Could not schedule deletion. Your account and notes are unchanged.", "error"); }
+  finally { button.disabled = false; }
+});
+
+$("#pip-cancel-deletion").addEventListener("click", async () => {
+  if (!activeUser || !confirm("Cancel account deletion and unlock your notes?")) return;
+  const button = $("#pip-cancel-deletion");
+  button.disabled = true;
+  try {
+    await updateDoc(doc(db, "yourNotes", activeUser.uid), {
+      deletionStatus: "active",
+      deletionCancelledAt: serverTimestamp()
+    });
+    await syncAccountLifecycle(activeUser);
+  } catch { status("Could not cancel deletion. Try again before the grace period ends.", "error"); }
+  finally { button.disabled = false; }
+});
+
+async function erasePersonalNotes(uid) {
+  const notesQuery = () => query(noteCollection(uid), orderBy(documentId()), limit(200));
+  while (true) {
+    const page = await getDocs(notesQuery());
+    if (page.empty) return;
+    const batch = writeBatch(db);
+    page.docs.forEach(note => batch.delete(note.ref));
+    await batch.commit();
+  }
+}
+
+$("#pip-finalize-deletion-form").addEventListener("submit", async event => {
+  event.preventDefault();
+  if (!activeUser?.email || accountDeletion?.deletionStatus !== "ready") return;
+  const deadline = accountDeletion.deletionAt?.toDate?.();
+  if (!deadline || deadline.getTime() > Date.now()) return status("The 30-day grace period has not ended yet.", "error");
+  const button = event.currentTarget.querySelector('button[type="submit"]');
+  button.disabled = true;
+  try {
+    const credential = EmailAuthProvider.credential(activeUser.email, $("#pip-delete-password").value);
+    await reauthenticateWithCredential(activeUser, credential);
+    await erasePersonalNotes(activeUser.uid);
+    await deleteDoc(doc(db, "yourNotes", activeUser.uid));
+    await deleteUser(activeUser);
+    activeUser = null;
+    accountDeletion = null;
+    await signOut(auth);
+    showPrivateNotes(null);
+    status("Your notes have been removed and the account deletion was completed.", "success");
+  } catch (error) {
+    const message = error.code === "auth/invalid-credential" || error.code === "auth/wrong-password"
+      ? "The password did not match. Your account is unchanged."
+      : "Deletion could not be completed. Your account remains available; sign in again and retry.";
+    status(message, "error");
+  } finally { button.disabled = false; }
+});
 
 $("#pip-register-form").addEventListener("submit", async event => {
   event.preventDefault();
@@ -165,7 +271,7 @@ function showPrivateNotes(user) {
   $("#pip-status").hidden = true;
   if (user) {
     $("#pip-welcome").textContent = user.displayName ? `${user.displayName}'s Notes.` : "Your Notes.";
-    watchNotes(user);
+    syncAccountLifecycle(user).catch(() => status("Could not load account status. Notes remain protected until it can be checked.", "error"));
   } else {
     unsubscribe?.();
     unsubscribe = null;

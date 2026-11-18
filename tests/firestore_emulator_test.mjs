@@ -64,11 +64,38 @@ try {
     const existing = (await getDoc(ref)).data();
     return updateDoc(ref, { title: 'Edited', content: 'Updated', createdAt: existing.createdAt, updatedAt: serverTimestamp() });
   })(), assertSucceeds);
-  await check('Owner can delete own Your Notes', deleteDoc(notePath(alice, 'alice', 'one')), assertSucceeds);
+  const accountPath = doc(alice, 'yourNotes', 'alice');
+  const scheduledAccount = () => ({
+    deletionStatus: 'scheduled',
+    deletionRequestedAt: serverTimestamp(),
+    deletionAt: Timestamp.fromMillis(Date.now() + 30 * 24 * 60 * 60 * 1000)
+  });
+  await check('Verified user schedules deletion with a 30-day grace period', setDoc(accountPath, scheduledAccount()), assertSucceeds);
+  await check('Notes are locked during the deletion grace period', getDoc(notePath(alice, 'alice', 'one')), assertFails);
+  await check('User can cancel deletion before its deadline', updateDoc(accountPath, {
+    deletionStatus: 'active', deletionCancelledAt: serverTimestamp()
+  }), assertSucceeds);
+  await check('Notes access returns after deletion is cancelled', getDoc(notePath(alice, 'alice', 'one')), assertSucceeds);
+  await check('User can schedule deletion again after cancelling', setDoc(accountPath, scheduledAccount()), assertSucceeds);
+  await check('User cannot mark deletion ready before the grace deadline', updateDoc(accountPath, {
+    deletionStatus: 'ready', deletionReadyAt: serverTimestamp()
+  }), assertFails);
+  await environment.withSecurityRulesDisabled(async context => {
+    await updateDoc(doc(context.firestore(), 'yourNotes', 'alice'), {
+      deletionAt: Timestamp.fromMillis(Date.now() - 1000)
+    });
+  });
+  await check('User can mark deletion ready after the grace deadline', updateDoc(accountPath, {
+    deletionStatus: 'ready', deletionReadyAt: serverTimestamp()
+  }), assertSucceeds);
+  await check('User can read own lifecycle status for the final confirmation step', getDoc(accountPath), assertSucceeds);
+  await check('User can access notes for final deletion after the grace deadline', getDoc(notePath(alice, 'alice', 'one')), assertSucceeds);
+  await check('User can remove own note after the grace deadline', deleteDoc(notePath(alice, 'alice', 'one')), assertSucceeds);
+  await check('User can remove the lifecycle record after deletion becomes due', deleteDoc(accountPath), assertSucceeds);
   await check('Admin cannot create owner authorization records', setDoc(doc(admin, 'admins', 'admin-b'), { active: true }), assertFails);
 
-  console.log(`FIRESTORE EMULATOR: ${passed}/17 passed`);
-  assert.equal(passed, 17);
+  console.log(`FIRESTORE EMULATOR: ${passed}/27 passed`);
+  assert.equal(passed, 27);
 } finally {
   await environment.cleanup();
 }

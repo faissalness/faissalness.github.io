@@ -52,7 +52,7 @@
     </section>
     <section id="pip-notes" class="pip-notes" hidden>
       <div class="pip-heading"><div><p class="eyebrow">YOUR PRIVATE SPACE</p><h1 id="pip-welcome">Your Notes.</h1></div><button id="pip-sign-out" class="text-button" type="button">Sign out ↗</button></div>
-      <div class="pip-notes-layout">
+      <div id="pip-notes-layout" class="pip-notes-layout">
         <aside class="pip-note-list-panel"><div class="pip-list-heading"><h2>Notes</h2><button class="compact-btn primary-button" id="pip-new-note" type="button">New note +</button></div><div id="pip-note-list" class="pip-note-list" aria-live="polite"></div></aside>
         <form id="pip-note-form" class="pip-editor">
           <div class="pip-editor-heading"><input id="pip-note-title" class="note-title-input" maxlength="160" placeholder="Untitled note" aria-label="Note title"><button id="pip-delete-note" class="compact-btn danger-btn" type="button" hidden>Delete</button></div>
@@ -60,6 +60,21 @@
           <div class="pip-editor-footer"><span id="pip-save-status" class="save-indicator" role="status" aria-live="polite"></span><button class="primary-button compact-btn" id="pip-save-note" type="submit">Save note <span>↗</span></button></div>
         </form>
       </div>
+      <section class="pip-account-controls" aria-labelledby="pip-account-title">
+        <p class="eyebrow">ACCOUNT / LIFECYCLE</p>
+        <h2 id="pip-account-title">Account controls</h2>
+        <p id="pip-deletion-status" class="micro-note" role="status" aria-live="polite">Loading account status…</p>
+        <button id="pip-schedule-deletion" class="text-button" type="button">Schedule 30-day account deletion</button>
+        <button id="pip-cancel-deletion" class="text-button" type="button" hidden>Cancel scheduled deletion</button>
+        <div id="pip-finalize-deletion" class="pip-finalize-deletion" hidden>
+          <p class="micro-note">Your grace period has ended. Sign in again with your password to permanently remove this account and its notes. Nothing is erased until you confirm here.</p>
+          <form id="pip-finalize-deletion-form" class="compact-form">
+            <label for="pip-delete-password">Confirm your password</label>
+            <input id="pip-delete-password" type="password" autocomplete="current-password" required>
+            <button class="danger-btn compact-btn" type="submit">Permanently delete account</button>
+          </form>
+        </div>
+      </section>
       <p class="micro-note">Your notes are scoped to your signed-in account.</p>
     </section>
     <footer class="page-footer"><a href="/">← Back to the signal</a><span>PIP / NOTES 004</span></footer>

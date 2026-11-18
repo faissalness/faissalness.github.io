@@ -31,6 +31,51 @@ service cloud.firestore {
         && data.updatedAt == request.time;
     }
 
+    function personalAccountActive(userUid) {
+      return !exists(/databases/$(database)/documents/yourNotes/$(userUid))
+        || get(/databases/$(database)/documents/yourNotes/$(userUid)).data.deletionStatus == 'active';
+    }
+
+    function personalDeletionReady(userUid) {
+      return exists(/databases/$(database)/documents/yourNotes/$(userUid))
+        && get(/databases/$(database)/documents/yourNotes/$(userUid)).data.deletionStatus == 'ready';
+    }
+
+    function validDeletionSchedule() {
+      return request.resource.data.keys().hasOnly([
+          'deletionStatus', 'deletionRequestedAt', 'deletionAt'
+        ])
+        && request.resource.data.deletionStatus == 'scheduled'
+        && request.resource.data.deletionRequestedAt == request.time
+        && request.resource.data.deletionAt > request.time
+        && request.resource.data.deletionAt <= request.time + duration.value(30, 'd')
+        && request.resource.data.deletionAt >= request.time + duration.value(29, 'd');
+    }
+
+    function validDeletionCancellation() {
+      return resource.data.deletionStatus == 'scheduled'
+        && resource.data.deletionAt > request.time
+        && request.resource.data.keys().hasOnly([
+          'deletionStatus', 'deletionRequestedAt', 'deletionAt', 'deletionCancelledAt'
+        ])
+        && request.resource.data.deletionStatus == 'active'
+        && request.resource.data.deletionRequestedAt == resource.data.deletionRequestedAt
+        && request.resource.data.deletionAt == resource.data.deletionAt
+        && request.resource.data.deletionCancelledAt == request.time;
+    }
+
+    function validDeletionReadyTransition() {
+      return resource.data.deletionStatus == 'scheduled'
+        && resource.data.deletionAt <= request.time
+        && request.resource.data.keys().hasOnly([
+          'deletionStatus', 'deletionRequestedAt', 'deletionAt', 'deletionReadyAt'
+        ])
+        && request.resource.data.deletionStatus == 'ready'
+        && request.resource.data.deletionRequestedAt == resource.data.deletionRequestedAt
+        && request.resource.data.deletionAt == resource.data.deletionAt
+        && request.resource.data.deletionReadyAt == request.time;
+    }
+
     // ADMINISTRATORS
     // Only the owner can create, activate, deactivate or delete admins.
     // An administrator can read only their own admin record.
@@ -131,16 +176,40 @@ service cloud.firestore {
       allow delete: if owner();
     }
 
+    // Account lifecycle is separate from notes. Scheduling suspends note access;
+    // cancellation is allowed only during the 30-day grace period.
+    match /yourNotes/{userUid} {
+      allow read: if verifiedAccount() && request.auth.uid == userUid;
+      allow create: if verifiedAccount()
+        && request.auth.uid == userUid
+        && validDeletionSchedule();
+      allow update: if verifiedAccount()
+        && request.auth.uid == userUid
+        && (validDeletionCancellation()
+            || validDeletionReadyTransition()
+            || (resource.data.deletionStatus == 'active' && validDeletionSchedule()));
+      allow delete: if verifiedAccount()
+        && request.auth.uid == userUid
+        && personalDeletionReady(userUid);
+    }
+
     // Each Your Notes user has a separate UID-scoped private notes tree.
     // No client can list another account's data or promote itself through note fields.
     match /yourNotes/{userUid}/notes/{noteId} {
-      allow read, delete: if verifiedAccount() && request.auth.uid == userUid;
+      allow read: if verifiedAccount()
+        && request.auth.uid == userUid
+        && (personalAccountActive(userUid) || personalDeletionReady(userUid));
+      allow delete: if verifiedAccount()
+        && request.auth.uid == userUid
+        && (personalAccountActive(userUid) || personalDeletionReady(userUid));
       allow create: if verifiedAccount()
         && request.auth.uid == userUid
+        && personalAccountActive(userUid)
         && validYourNote(request.resource.data)
         && request.resource.data.createdAt == request.time;
       allow update: if verifiedAccount()
         && request.auth.uid == userUid
+        && personalAccountActive(userUid)
         && validYourNote(request.resource.data)
         && request.resource.data.createdAt == resource.data.createdAt;
     }
