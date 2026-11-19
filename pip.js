@@ -18,6 +18,30 @@ let accountDeletion = null;
 let selectedPalUid = null;
 let palRefreshTimer = null;
 let protectedNoteUnlocked = false;
+const REMEMBERED_PIP_EMAIL = "fj-pip-remembered-email";
+
+function rememberedPipEmail() {
+  try { return localStorage.getItem(REMEMBERED_PIP_EMAIL) || ""; } catch { return ""; }
+}
+
+function rememberPipEmail(email) {
+  try { localStorage.setItem(REMEMBERED_PIP_EMAIL, email); } catch {}
+}
+
+function clearRememberedPipEmail() {
+  try { localStorage.removeItem(REMEMBERED_PIP_EMAIL); } catch {}
+}
+
+async function palApiForUser(user, path, options = {}) {
+  const idToken = await user.getIdToken();
+  const response = await fetch(`${API}${path}`, {
+    ...options,
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}`, ...(options.headers || {}) }
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || "Service unavailable");
+  return data;
+}
 
 async function palApi(path, options = {}) {
   if (!activeUser) throw new Error("Sign in required");
@@ -434,6 +458,19 @@ $("#pip-register-form").addEventListener("submit", async event => {
     const email = $("#pip-register-email").value.trim().toLowerCase();
     const credential = await createUserWithEmailAndPassword(auth, email, $("#pip-register-password").value);
     await updateProfile(credential.user, { displayName: name });
+    rememberPipEmail(email);
+    await setDoc(doc(db, "users", credential.user.uid), {
+      email,
+      approved: false,
+      createdAt: serverTimestamp()
+    });
+    await setDoc(doc(db, "accessRequests", credential.user.uid), {
+      uid: credential.user.uid,
+      email,
+      status: "pending",
+      deliveryStatus: "pending",
+      createdAt: serverTimestamp()
+    });
     $("#pip-welcome").textContent = name ? `${name}'s Notes.` : "Your Notes.";
     await sendEmailVerification(credential.user);
     status("Check your inbox for the verification link to activate Your Notes.", "success");
@@ -448,7 +485,11 @@ $("#pip-login-form").addEventListener("submit", async event => {
   event.preventDefault();
   const button = event.currentTarget.querySelector('button[type="submit"]');
   button.disabled = true;
-  try { await signInWithEmailAndPassword(auth, $("#pip-login-email").value.trim(), $("#pip-login-password").value); }
+  try {
+    const email = $("#pip-login-email").value.trim().toLower();
+    await signInWithEmailAndPassword(auth, email, $("#pip-login-password").value);
+    rememberPipEmail(email);
+  }
   catch { status("Sign-in failed. Check your email and password.", "error"); }
   finally { button.disabled = false; }
 });
@@ -462,11 +503,42 @@ $("#pip-reset").addEventListener("click", async () => {
 });
 
 $("#pip-sign-out").addEventListener("click", async () => {
-  try { await signOut(auth); }
+  try {
+    await signOut(auth);
+    showPrivateNotes(null);
+  }
   catch { status("Could not sign out. Try again.", "error"); }
 });
 
 $("#pip-verify-sign-out").addEventListener("click", async () => { await signOut(auth); });
+$("#pip-returning-form").addEventListener("submit", async event => {
+  event.preventDefault();
+  const email = rememberedPipEmail();
+  const passwordInput = $("#pip-returning-password");
+  if (!email) return;
+  passwordInput.disabled = true;
+  try {
+    await signInWithEmailAndPassword(auth, email, passwordInput.value);
+  } catch (error) {
+    passwordInput.value = "";
+    passwordInput.classList.add("gate-error");
+    $("#pip-returning-feedback").classList.add("active-error");
+    setTimeout(() => {
+      passwordInput.classList.remove("gate-error");
+      $("#pip-returning-feedback").classList.remove("active-error");
+    }, 700);
+  } finally {
+    passwordInput.disabled = false;
+  }
+});
+$("#pip-switch-account").addEventListener("click", () => {
+  clearRememberedPipEmail();
+  $("#pip-returning").hidden = true;
+  $("#pip-auth").hidden = false;
+  $("#pip-login-email").value = "";
+  $("#pip-login-password").value = "";
+  $("#pip-login-email").focus();
+});
 $("#pip-resend-verification").addEventListener("click", async () => {
   try { await sendEmailVerification(emailVerificationUser); status("A fresh verification link has been sent.", "success"); }
   catch { status("Could not send a new verification link yet. Wait a moment and try again.", "error"); }
@@ -524,8 +596,30 @@ $("#pip-delete-note").addEventListener("click", async () => {
   } catch { status("Could not move this note to Trash.", "error"); }
 });
 
-function showPrivateNotes(user) {
+async function showPrivateNotes(user) {
   emailVerificationUser = null;
+  if (!user) {
+    activeUser = null;
+    $("#pip-auth").hidden = false;
+    $("#pip-notes").hidden = true;
+    return;
+  }
+  try {
+    const registration = await palApiForUser(user, "/api/users/register", { method: "POST", body: "{}" });
+    if (registration.status !== "active" || registration.pipStatus !== "active") {
+      activeUser = null;
+      $("#pip-auth").hidden = true;
+      $("#pip-notes").hidden = true;
+      status("Your PIP and Your Notes access is pending owner approval.", "info");
+      return;
+    }
+  } catch (error) {
+    activeUser = null;
+    $("#pip-auth").hidden = true;
+    $("#pip-notes").hidden = true;
+    status(error.message || "Could not verify application access.", "error");
+    return;
+  }
   activeUser = user;
   $("#pip-verify").hidden = true;
   $("#pip-auth").hidden = Boolean(user);
@@ -565,5 +659,20 @@ onAuthStateChanged(auth, user => {
     return;
   }
   $("#pip-verify").hidden = true;
+  if (!user) {
+    const remembered = rememberedPipEmail();
+    if (remembered) {
+      $("#pip-auth").hidden = true;
+      $("#pip-returning").hidden = false;
+      $("#pip-returning-email").textContent = remembered;
+      $("#pip-returning-password").value = "";
+      setTimeout(() => $("#pip-returning-password").focus(), 50);
+    } else {
+      $("#pip-returning").hidden = true;
+      $("#pip-auth").hidden = false;
+    }
+    showPrivateNotes(null);
+    return;
+  }
   showPrivateNotes(user);
 });

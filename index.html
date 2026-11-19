@@ -74,7 +74,14 @@
 
     <aside id="owner-drawer" class="owner-drawer" aria-labelledby="owner-title" hidden>
       <div class="drawer-heading"><p class="eyebrow">FJ / OWNER</p><button id="owner-close" class="icon-button" type="button" aria-label="Close access requests">×</button></div>
-      <h2 id="owner-title">Access requests</h2><p id="drawer-status" class="status drawer-status" role="status" aria-live="polite" hidden></p><div id="requests-list" aria-live="polite"></div>
+      <h2 id="owner-title">Access requests</h2><p id="drawer-status" class="status drawer-status" role="status" aria-live="polite" hidden></p>
+      <form id="admin-account-lookup" class="compact-form">
+        <label for="admin-account-email">Look up verified account</label>
+        <input id="admin-account-email" type="email" autocomplete="email" required>
+        <button class="primary-button compact-btn" type="submit">Find account <span>↗</span></button>
+      </form>
+      <div id="admin-account-result" class="request-row" hidden></div>
+      <div id="requests-list" aria-live="polite"></div>
     </aside>
   <p id="site-feedback" class="site-feedback" role="status" aria-live="polite" hidden></p>
   </main>

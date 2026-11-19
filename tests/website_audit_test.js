@@ -70,6 +70,18 @@ const pipPage = fs.readFileSync(path.join(ROOT, 'pip.html'), 'utf8');
 const pipScript = fs.readFileSync(path.join(ROOT, 'pip.js'), 'utf8');
 assert.ok(pipPage.includes('PIP and<br><span>Your Notes.</span>') && pipScript.includes('Account already exists.') && pipScript.includes('sendEmailVerification'),
   'PIP and Notes 04 must expose registration, verified email, reset, and duplicate-account handling');
+assert.ok(pipPage.includes('id="pip-returning"') && pipPage.includes('id="pip-returning-password"')
+  && pipScript.includes('signInWithEmailAndPassword(auth, email, passwordInput.value)')
+  && pipPage.includes('id="pip-switch-account"'),
+  'Returning PIP users must receive a real password-only Firebase sign-in screen with account switching');
+assert.ok(pipScript.includes('pipStatus') && fs.readFileSync(path.join(ROOT, 'backend', 'worker.js'), 'utf8').includes('/api/admin/permissions')
+  && fs.readFileSync(path.join(ROOT, 'backend', 'worker.js'), 'utf8').includes('/api/admin/lookup'),
+  'PIP and Your Notes access must be gated by trusted server-side application permissions');
+const meetPage = fs.readFileSync(path.join(ROOT, 'meet.html'), 'utf8');
+const godsPage = fs.readFileSync(path.join(ROOT, 'gods.html'), 'utf8');
+assert.ok(meetPage.includes('class="meet-layout"') && meetPage.includes('class="object-core"')
+  && godsPage.includes('class="inspiration-grid"') && godsPage.includes('data-filter="motion"'),
+  'Meet Me and To the gods must retain their original recovered structure and filters');
 assert.ok(pipScript.includes('collection(db, "yourNotes", uid, "notes")') && fs.readFileSync(path.join(ROOT, 'firestore.rules'), 'utf8').includes('match /yourNotes/{userUid}/notes/{noteId}'),
   'Your Notes must use UID-scoped storage with a matching Firestore authorization rule');
 assert.ok(pipPage.includes('Schedule 30-day account deletion') && pipPage.includes('Cancel scheduled deletion')

@@ -233,13 +233,44 @@ export default {
         if (!identity) return new Response(JSON.stringify({ error: "Access denied" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         if (identity.email_verified !== true) return new Response(JSON.stringify({ error: "Verified email required" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         const emailDigest = await emailLookupDigest(String(identity.email || "").trim().toLowerCase(), env.PAL_LOOKUP_SECRET);
-        await env.DB.prepare("INSERT OR IGNORE INTO registered_users (uid, registered_at, display_name, email_digest) VALUES (?, ?, ?, ?)")
-          .bind(identity.sub, Date.now(), String(identity.name || "").slice(0, 80), emailDigest).run();
+        const email = String(identity.email || "").trim().toLowerCase();
+        const localPart = email.split("@")[0] || "";
+        const eligible = localPart.endsWith("fj");
+        const status = eligible ? "active" : "pending";
+        await env.DB.prepare("INSERT OR IGNORE INTO registered_users (uid, registered_at, display_name, email_digest, status) VALUES (?, ?, ?, ?, ?)")
+          .bind(identity.sub, Date.now(), String(identity.name || "").slice(0, 80), emailDigest, status).run();
         await env.DB.prepare("UPDATE registered_users SET display_name = ?, email_digest = ? WHERE uid = ?")
           .bind(String(identity.name || "").slice(0, 80), emailDigest, identity.sub).run();
-        return new Response(JSON.stringify({ success: true }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        await env.DB.prepare("UPDATE registered_users SET pip_status = ?, notes_status = ? WHERE uid = ?")
+          .bind(eligible ? "active" : "pending", eligible ? "active" : "pending", identity.sub).run();
+        const account = await env.DB.prepare("SELECT status, deletion_at AS deletionAt FROM registered_users WHERE uid = ?").bind(identity.sub).first();
+        const permissions = await env.DB.prepare("SELECT pip_status AS pipStatus, notes_status AS notesStatus FROM registered_users WHERE uid = ?").bind(identity.sub).first();
+        return new Response(JSON.stringify({ success: true, status: account?.status || status, eligible, pipStatus: permissions?.pipStatus || "pending", notesStatus: permissions?.notesStatus || "pending" }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       } catch (_) {
         return new Response(JSON.stringify({ error: "Registration could not be recorded" }), { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+    }
+
+    if (url.pathname === "/api/admin/permissions" && request.method === "POST") {
+      try {
+        const identity = await readIdentity();
+        if (!identity || identity.sub !== OWNER_UID || identity.email_verified !== true) {
+          return new Response(JSON.stringify({ error: "Administrator access denied" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+        const body = await request.json();
+        const uid = typeof body.uid === "string" ? body.uid.slice(0, 128) : "";
+        const action = body.action;
+        if (!uid || !["approve", "revoke"].includes(action)) {
+          return new Response(JSON.stringify({ error: "Invalid permission action" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+        if (action === "approve") {
+          await env.DB.prepare("UPDATE registered_users SET status = 'active', pip_status = 'active', notes_status = 'active', deletion_at = NULL WHERE uid = ?").bind(uid).run();
+        } else {
+          await env.DB.prepare("UPDATE registered_users SET status = 'scheduled', pip_status = 'revoked', notes_status = 'revoked', deletion_at = NULL WHERE uid = ?").bind(uid).run();
+        }
+        return new Response(JSON.stringify({ success: true, uid, status: action === "approve" ? "active" : "revoked" }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      } catch (_) {
+        return new Response(JSON.stringify({ error: "Permission update unavailable" }), { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
     }
 
@@ -248,7 +279,7 @@ export default {
         const identity = await readIdentity();
         if (!identity) return new Response(JSON.stringify({ error: "Access denied" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         if (identity.email_verified !== true) return new Response(JSON.stringify({ error: "Verified email required" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-        if (!await accountIsActive(identity.sub)) return new Response(JSON.stringify({ error: "Active PIP account required" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        if (identity.sub !== OWNER_UID) return new Response(JSON.stringify({ error: "Administrator access denied" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         const rateKey = `admin_lookup:${identity.sub}`;
         const now = Date.now();
         const rate = await env.DB.prepare("SELECT attempts AS count, locked_until AS lockedUntil FROM rate_limits WHERE rate_key = ?").bind(rateKey).first();

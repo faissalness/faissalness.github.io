@@ -29,6 +29,19 @@ Updated: 2026-11-19 (Europe/Stockholm)
 ### Remaining externally dependent limitation
 
 - Full Firebase Auth and Firestore data erasure cannot be made unattended without a trusted Firebase Admin SDK credential/service in the deployment environment. The existing reauthenticated manual account deletion remains; it is not safe to invent or bypass that credential boundary.
+
+### Live restoration pass on 2026-11-19
+
+- Status: INCOMPLETE pending final frontend push and real multi-user production verification.
+- Root diagnosis: PIP registration previously created a Firebase identity but did not consistently establish a Firestore profile, access request, or trusted D1 application permission. Returning-user PIP sign-in had no password-only remembered-device state.
+- Root diagnosis for pages: the original Meet/Gods markup and CSS exist in Git history and local CSS, but live route stylesheet references and authorization reveals could leave the presentation degraded or hidden.
+- Restored the original Meet Me and To the gods structures and recovered dark futuristic CSS from commit `878a589`; routes now use cache-busted absolute stylesheet URLs.
+- Added `/pip/` remembered-account password-only Firebase sign-in with account switching. The password field reuses Notes 03 `.neon-gate-input` styling.
+- Added independent D1 `pip_status` and `notes_status` migration `0005_application_permissions.sql`.
+- Added owner-only `/api/admin/lookup` and `/api/admin/permissions` enforcement.
+- PIP registration now creates standard unapproved Firestore profile and pending access-request documents.
+- D1 migration 0005 applied and Worker deployed as version `d6679817-a9ac-46cf-9aac-81cc29c8cd4b`.
+- Focused workflow, Worker and website audit suites pass.
 - A local run of the Pages allowlist assembly succeeded: 26 files, five clean route aliases, no Worker/source-map markers.
 - QR test independently decoded the JavaScript-generated QR matrix to the exact test URL and covers unsafe URL rejection.
 - PIP page was visually checked at 390px mobile width; navigation, sign-in and account creation cards fit the viewport.

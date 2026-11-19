@@ -9,7 +9,7 @@
   <meta name="description" content="PIP and Your Notes — a private space for your own notes.">
   <title>PIP and Your Notes 04 — FJ</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="styles.css?v=20261119-1">
+  <link rel="stylesheet" href="/styles.css?v=20261119-restore">
 </head>
 <body class="site-body">
   <header class="topbar">
@@ -28,6 +28,18 @@
       <p class="eyebrow">FJ / PRIVATE FREQUENCY / 04</p>
       <h1>PIP and<br><span>Your Notes.</span></h1>
       <p class="pip-copy">A private notes space for your account.</p>
+      <section id="pip-returning" class="gate-forbidden pip-returning" hidden>
+        <div class="gate-lock-container">
+          <p class="gate-message">Welcome back.</p>
+          <p id="pip-returning-email" class="micro-note"></p>
+          <form id="pip-returning-form" class="gate-password-form">
+            <label class="sr-only" for="pip-returning-password">PIP account password</label>
+            <input type="password" id="pip-returning-password" class="neon-gate-input" autocomplete="current-password" required>
+            <div id="pip-returning-feedback" class="gate-feedback-indicator" aria-live="polite"></div>
+          </form>
+          <button id="pip-switch-account" class="text-button" type="button">Use another account</button>
+        </div>
+      </section>
       <div class="pip-auth-grid">
         <form id="pip-login-form" class="auth-card">
           <p class="card-index">01 / RETURNING</p><h2>Sign in</h2>

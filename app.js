@@ -311,6 +311,58 @@ function openOwnerDrawer() { if ($("#owner-drawer")) $("#owner-drawer").hidden =
 function closeOwnerDrawer() { if ($("#owner-drawer")) $("#owner-drawer").hidden = true; }
 if ($("#owner-open")) $("#owner-open").addEventListener("click", openOwnerDrawer);
 if ($("#owner-close")) $("#owner-close").addEventListener("click", closeOwnerDrawer);
+if ($("#admin-account-lookup")) {
+  $("#admin-account-lookup").addEventListener("submit", async event => {
+    event.preventDefault();
+    const email = $("#admin-account-email").value.trim();
+    const button = event.currentTarget.querySelector("button");
+    button.disabled = true;
+    try {
+      const token = await auth.currentUser.getIdToken();
+      const lookup = await fetch("https://fj-api.jimyass.workers.dev/api/admin/lookup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ email })
+      });
+      const data = await lookup.json();
+      if (!lookup.ok) throw new Error(data.error || "Lookup failed");
+      const result = $("#admin-account-result");
+      result.replaceChildren();
+      result.hidden = false;
+      const name = document.createElement("span");
+      name.textContent = `${data.displayName || "PIP account"} — ${email}`;
+      const approve = document.createElement("button");
+      approve.type = "button";
+      approve.textContent = "Approve";
+      const revoke = document.createElement("button");
+      revoke.type = "button";
+      revoke.textContent = "Revoke";
+      approve.addEventListener("click", () => setApplicationPermission(data.uid, "approve"));
+      revoke.addEventListener("click", () => setApplicationPermission(data.uid, "revoke"));
+      result.append(name, approve, revoke);
+    } catch (error) {
+      showDrawerStatus(error.message, "error");
+    } finally {
+      button.disabled = false;
+    }
+  });
+}
+
+async function setApplicationPermission(uid, action) {
+  try {
+    const token = await auth.currentUser.getIdToken();
+    const response = await fetch("https://fj-api.jimyass.workers.dev/api/admin/permissions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ uid, action })
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Permission update failed");
+    showDrawerStatus(`Account ${action === "approve" ? "approved" : "revoked"} successfully.`, "success");
+  } catch (error) {
+    showDrawerStatus(error.message, "error");
+  }
+}
 
 if ($("#sign-out")) {
   $("#sign-out").addEventListener("click", async event => {
