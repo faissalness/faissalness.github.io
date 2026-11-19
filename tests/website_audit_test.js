@@ -76,6 +76,9 @@ assert.ok(pipPage.includes('Schedule 30-day account deletion') && pipPage.includ
   && pipPage.includes('Permanently delete account') && pipScript.includes('reauthenticateWithCredential')
   && pipScript.includes('deletionStatus'),
   'PIP account deletion must require reauthentication, enforce a grace period, and support cancellation');
+assert.ok(pipPage.includes('id="pip-trash-list"') && pipScript.includes('deletionStatus: "trashed"')
+  && pipScript.includes('Restore') && pipScript.includes('Delete forever'),
+  'Your Notes must expose recoverable Trash restore and permanent-delete actions');
 passedAudits++;
 passedAudits += 2;
 assert.ok(fs.readFileSync(path.join(ROOT, 'firestore.rules'), 'utf8').includes('request.auth.token.email_verified == true'),

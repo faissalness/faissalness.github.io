@@ -11,17 +11,17 @@ if (mark) {
   mark.addEventListener("touchstart", recolor, { passive: true });
 }
 
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+
 const signoutBtn = document.querySelector("#sign-out");
 if (signoutBtn) {
   signoutBtn.addEventListener("click", async event => {
     event.currentTarget.disabled = true;
-    await signOut(auth);
-    location.replace("index.html");
+    try { await signOut(auth); } catch (_) { /* ignore */ }
+    location.replace("/");
   });
 }
-
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
 const db = getFirestore(app);
 onAuthStateChanged(auth, async user => {
   if (!user) { location.replace("index.html"); return; }

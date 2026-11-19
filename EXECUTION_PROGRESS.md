@@ -98,3 +98,16 @@ Incomplete. The production Worker now includes D1-backed PIP social and count ro
 - Live unauthenticated Firestore REST reads to `yourNotes`, `privateNotes`, `activeNotesSessions`, and a user notes path return 403. The emulator was not rerun in this shell because no Firebase CLI executable exists in this checkout or the available `node_modules/.bin`; earlier emulator run is recorded above as 30/30.
 - Local complete suite rerun after suffix authorization fix: **213 passed, 0 failed**. `git diff --check` passed before the latest progress-only edit.
 - Next external operation if the normal credential helper remains blocked: run `cd "C:\Users\faiss\OneDrive\Desktop\FJ-website"; git push origin main` in a normal PowerShell window where Git Credential Manager can launch. This must be followed by observing the Actions run and independently checking the live artifact; it is not completion by itself.
+
+### Final implementation pass on 2026-11-19
+
+- Repaired the trusted access-approval trigger and restored explicit local-part `fj` eligibility handling while keeping browser-created profiles unapproved.
+- Removed browser self-promotion and tightened Firestore user/profile update authority to the owner.
+- Added Your Notes Trash UI: trashed notes remain recoverable, can be restored, or can be permanently deleted.
+- Added a daily Cloudflare scheduled cleanup trigger for D1 accounts whose 30-day grace period has ended.
+- Deployed D1 migration `0004_registered_email_lookup.sql` remotely.
+- Deployed Cloudflare Worker version `fd2a173f-b1ef-426d-934e-c4de127e1049` to `https://fj-api.jimyass.workers.dev`; the schedule `0 3 * * *` is active.
+- Deployed compiled Firestore rules successfully to project `fj-website-384fd`.
+- Complete local suite: 213 passed, 0 failed.
+- JavaScript syntax checks passed for `app.js`, `private-page.js`, `pip.js`, `notes.js`, `backend/worker.js`, and `functions/access-approval-trigger.js`.
+- `git diff --check` passed.

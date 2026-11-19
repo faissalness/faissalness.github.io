@@ -165,6 +165,19 @@ async function verifyFirebaseIdToken(token) {
 }
 
 export default {
+  async scheduled(event, env, ctx) {
+    if (!env?.DB) return;
+    const now = Date.now();
+    const due = await env.DB.prepare("SELECT uid FROM registered_users WHERE status = 'scheduled' AND deletion_at <= ?")
+      .bind(now).all();
+    for (const account of due.results || []) {
+      await env.DB.batch([
+        env.DB.prepare("DELETE FROM pip_messages WHERE sender_uid = ? OR recipient_uid = ?").bind(account.uid, account.uid),
+        env.DB.prepare("DELETE FROM pals WHERE uid_low = ? OR uid_high = ?").bind(account.uid, account.uid),
+        env.DB.prepare("UPDATE registered_users SET status = 'active', deletion_at = NULL WHERE uid = ?").bind(account.uid)
+      ]);
+    }
+  },
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const requestOrigin = request.headers.get("Origin");
@@ -219,13 +232,45 @@ export default {
         const identity = await verifyFirebaseIdToken(authHeader.replace(/^Bearer\s+/i, ""));
         if (!identity) return new Response(JSON.stringify({ error: "Access denied" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         if (identity.email_verified !== true) return new Response(JSON.stringify({ error: "Verified email required" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-        await env.DB.prepare("INSERT OR IGNORE INTO registered_users (uid, registered_at, display_name) VALUES (?, ?, ?)")
-          .bind(identity.sub, Date.now(), String(identity.name || "").slice(0, 80)).run();
-        await env.DB.prepare("UPDATE registered_users SET display_name = ? WHERE uid = ?")
-          .bind(String(identity.name || "").slice(0, 80), identity.sub).run();
+        const emailDigest = await emailLookupDigest(String(identity.email || "").trim().toLowerCase(), env.PAL_LOOKUP_SECRET);
+        await env.DB.prepare("INSERT OR IGNORE INTO registered_users (uid, registered_at, display_name, email_digest) VALUES (?, ?, ?, ?)")
+          .bind(identity.sub, Date.now(), String(identity.name || "").slice(0, 80), emailDigest).run();
+        await env.DB.prepare("UPDATE registered_users SET display_name = ?, email_digest = ? WHERE uid = ?")
+          .bind(String(identity.name || "").slice(0, 80), emailDigest, identity.sub).run();
         return new Response(JSON.stringify({ success: true }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       } catch (_) {
         return new Response(JSON.stringify({ error: "Registration could not be recorded" }), { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+    }
+
+    if (url.pathname === "/api/admin/lookup" && request.method === "POST") {
+      try {
+        const identity = await readIdentity();
+        if (!identity) return new Response(JSON.stringify({ error: "Access denied" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        if (identity.email_verified !== true) return new Response(JSON.stringify({ error: "Verified email required" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        if (!await accountIsActive(identity.sub)) return new Response(JSON.stringify({ error: "Active PIP account required" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        const rateKey = `admin_lookup:${identity.sub}`;
+        const now = Date.now();
+        const rate = await env.DB.prepare("SELECT attempts AS count, locked_until AS lockedUntil FROM rate_limits WHERE rate_key = ?").bind(rateKey).first();
+        if ((rate?.lockedUntil || 0) > now) return new Response(JSON.stringify({ error: "Too many lookups. Try again later." }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        if ((rate?.count || 0) >= 10) {
+          await env.DB.prepare("INSERT INTO rate_limits (rate_key, attempts, locked_until) VALUES (?, 10, ?) ON CONFLICT(rate_key) DO UPDATE SET locked_until = excluded.locked_until")
+            .bind(rateKey, now + 60 * 60 * 1000).run();
+          return new Response(JSON.stringify({ error: "Too many lookups. Try again later." }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+        await env.DB.prepare("INSERT INTO rate_limits (rate_key, attempts, locked_until) VALUES (?, 1, 0) ON CONFLICT(rate_key) DO UPDATE SET attempts = attempts + 1")
+          .bind(rateKey).run();
+        const body = await request.json();
+        const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+        if (!/^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9.-]+\.[a-z]{2,}$/i.test(email) || email.length > 254) {
+          return new Response(JSON.stringify({ error: "Enter a valid email address" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+        const digest = await emailLookupDigest(email, env.PAL_LOOKUP_SECRET);
+        const target = await env.DB.prepare("SELECT uid, display_name AS displayName FROM registered_users WHERE email_digest = ? AND status = 'active' LIMIT 1").bind(digest).first();
+        if (!target) return new Response(JSON.stringify({ error: "No active Your Notes account uses that email" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        return new Response(JSON.stringify({ uid: target.uid, displayName: target.displayName || "" }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      } catch (_) {
+        return new Response(JSON.stringify({ error: "Account lookup unavailable" }), { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
     }
 

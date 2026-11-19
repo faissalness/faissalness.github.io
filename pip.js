@@ -183,13 +183,15 @@ function noteCollection(uid) {
 function renderNotes() {
   const list = $("#pip-note-list");
   list.replaceChildren();
-  if (!notes.length) {
+  const activeNotes = notes.filter(note => note.deletionStatus !== "trashed");
+  const trashedNotes = notes.filter(note => note.deletionStatus === "trashed");
+  if (!activeNotes.length) {
     const empty = document.createElement("p");
     empty.className = "pip-empty";
     empty.textContent = "No notes yet. Create your first one.";
     list.append(empty);
   }
-  for (const note of notes) {
+  for (const note of activeNotes) {
     const button = document.createElement("button");
     button.type = "button";
     button.className = `pip-note-row${note.id === selectedId ? " active" : ""}`;
@@ -204,8 +206,42 @@ function renderNotes() {
     button.addEventListener("click", () => selectNote(note.id));
     list.append(button);
   }
-  if (!selectedId && notes.length) selectNote(notes[0].id, false);
-  if (selectedId && !notes.some(note => note.id === selectedId)) selectNote(null, false);
+  const trashList = $("#pip-trash-list");
+  trashList.replaceChildren();
+  if (!trashedNotes.length) addTextNode(trashList, "Trash is empty.", "pip-empty");
+  for (const note of trashedNotes) {
+    const row = document.createElement("div");
+    row.className = "pip-invitation-row";
+    addTextNode(row, note.protection ? "Protected note" : (note.title || "Untitled note"), "pip-note-row-title");
+    const restore = document.createElement("button");
+    restore.type = "button";
+    restore.className = "text-button";
+    restore.textContent = "Restore";
+    restore.addEventListener("click", async () => {
+      restore.disabled = true;
+      try {
+        await updateDoc(doc(db, "yourNotes", activeUser.uid, "notes", note.id), {
+          deletionStatus: "active",
+          deletedAt: null,
+          updatedAt: serverTimestamp()
+        });
+      } catch { status("Could not restore this note.", "error"); restore.disabled = false; }
+    });
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "text-button";
+    remove.textContent = "Delete forever";
+    remove.addEventListener("click", async () => {
+      if (!confirm("Permanently delete this trashed note? This cannot be undone.")) return;
+      remove.disabled = true;
+      try { await deleteDoc(doc(db, "yourNotes", activeUser.uid, "notes", note.id)); }
+      catch { status("Could not permanently delete this note.", "error"); remove.disabled = false; }
+    });
+    row.append(restore, remove);
+    trashList.append(row);
+  }
+  if (!selectedId && activeNotes.length) selectNote(activeNotes[0].id, false);
+  if (selectedId && !activeNotes.some(note => note.id === selectedId)) selectNote(null, false);
 }
 
 function selectNote(id, repaint = true) {
@@ -477,9 +513,15 @@ $("#pip-note-form").addEventListener("submit", async event => {
 });
 
 $("#pip-delete-note").addEventListener("click", async () => {
-  if (!activeUser || !selectedId || !confirm("Delete this note? This cannot be undone.")) return;
-  try { await deleteDoc(doc(db, "yourNotes", activeUser.uid, "notes", selectedId)); selectNote(null); }
-  catch { status("Could not delete this note.", "error"); }
+  if (!activeUser || !selectedId || !confirm("Move this note to Trash for 30 days?")) return;
+  try {
+    await updateDoc(doc(db, "yourNotes", activeUser.uid, "notes", selectedId), {
+      deletionStatus: "trashed",
+      deletedAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    });
+    selectNote(null);
+  } catch { status("Could not move this note to Trash.", "error"); }
 });
 
 function showPrivateNotes(user) {
