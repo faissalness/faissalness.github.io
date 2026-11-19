@@ -29,6 +29,9 @@ try {
   const admin = environment.authenticatedContext('admin-a', { email_verified: true }).firestore();
   const owner = environment.authenticatedContext('hDbzbNTC7pOuU2UFCjFksopbgaG3').firestore();
   const anonymous = environment.unauthenticatedContext().firestore();
+  await environment.withSecurityRulesDisabled(async context => {
+    await setDoc(doc(context.firestore(), 'applicationPermissions', 'alice'), { pipStatus: 'active', notesStatus: 'active', updatedAt: serverTimestamp() });
+  });
   const notePath = (db, uid, id) => doc(db, 'yourNotes', uid, 'notes', id);
   const note = { title: 'Private', content: 'Alice only', createdAt: serverTimestamp(), updatedAt: serverTimestamp() };
 

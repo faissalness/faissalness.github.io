@@ -77,6 +77,13 @@ assert.ok(pipPage.includes('id="pip-returning"') && pipPage.includes('id="pip-re
 assert.ok(pipScript.includes('pipStatus') && fs.readFileSync(path.join(ROOT, 'backend', 'worker.js'), 'utf8').includes('/api/admin/permissions')
   && fs.readFileSync(path.join(ROOT, 'backend', 'worker.js'), 'utf8').includes('/api/admin/lookup'),
   'PIP and Your Notes access must be gated by trusted server-side application permissions');
+assert.ok(pipScript.includes('AUTH_ACTION_URL') && pipScript.includes('handleCodeInApp: false')
+  && fs.readFileSync(path.join(ROOT, 'app.js'), 'utf8').includes('handleCodeInApp: false'),
+  'Production verification/reset emails must use explicit Pages action continuation URLs');
+assert.ok(pipPage.includes('pip-note-attachments') && pipScript.includes('uploadPipAttachments')
+  && fs.readFileSync(path.join(ROOT, 'firestore.rules'), 'utf8').includes('/attachments/{attachmentId}')
+  && fs.readFileSync(path.join(ROOT, 'firestore.rules'), 'utf8').includes('1000000'),
+  'PIP note attachments must be UID-scoped and size/type constrained');
 assert.ok(pipPage.includes('data-pip-view="feed"') && pipPage.includes('pip-post-visibility')
   && pipScript.includes('/api/posts') && fs.readFileSync(path.join(ROOT, 'backend', 'worker.js'), 'utf8').includes('body.visibility === "friends"'),
   'PIP must expose a private/friends social feed backed by authenticated visibility checks');

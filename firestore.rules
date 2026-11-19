@@ -51,6 +51,11 @@ service cloud.firestore {
         || get(/databases/$(database)/documents/yourNotes/$(userUid)).data.deletionStatus == 'active';
     }
 
+    function applicationPermissionActive(userUid, appName) {
+      return exists(/databases/$(database)/documents/applicationPermissions/$(userUid))
+        && get(/databases/$(database)/documents/applicationPermissions/$(userUid)).data[appName] == 'active';
+    }
+
     function personalDeletionReady(userUid) {
       return exists(/databases/$(database)/documents/yourNotes/$(userUid))
         && get(/databases/$(database)/documents/yourNotes/$(userUid)).data.deletionStatus == 'ready';
@@ -205,6 +210,12 @@ service cloud.firestore {
       allow delete: if owner();
     }
 
+    // Independent application permissions are owner-managed and read-only to the account.
+    match /applicationPermissions/{userUid} {
+      allow read: if verifiedAccount() && (request.auth.uid == userUid || owner());
+      allow create, update, delete: if owner();
+    }
+
     // Account lifecycle is separate from notes. Scheduling suspends note access;
     // cancellation is allowed only during the 30-day grace period.
     match /yourNotes/{userUid} {
@@ -227,17 +238,21 @@ service cloud.firestore {
     match /yourNotes/{userUid}/notes/{noteId} {
       allow read: if verifiedAccount()
         && request.auth.uid == userUid
+        && applicationPermissionActive(userUid, 'notesStatus')
         && (personalAccountActive(userUid) || personalDeletionReady(userUid));
       allow delete: if verifiedAccount()
         && request.auth.uid == userUid
+        && applicationPermissionActive(userUid, 'notesStatus')
         && (personalAccountActive(userUid) || personalDeletionReady(userUid));
       allow create: if verifiedAccount()
         && request.auth.uid == userUid
+        && applicationPermissionActive(userUid, 'notesStatus')
         && personalAccountActive(userUid)
         && validYourNote(request.resource.data)
         && request.resource.data.createdAt == request.time;
       allow update: if verifiedAccount()
         && request.auth.uid == userUid
+        && applicationPermissionActive(userUid, 'notesStatus')
         && personalAccountActive(userUid)
         && validYourNote(request.resource.data)
         && request.resource.data.createdAt == resource.data.createdAt
@@ -248,6 +263,28 @@ service cloud.firestore {
                 && request.resource.data.updatedAt == request.time)
             || (!('deletionStatus' in request.resource.data)
                 && !('deletedAt' in request.resource.data)));
+    }
+
+    match /yourNotes/{userUid}/notes/{noteId}/attachments/{attachmentId} {
+      allow read, delete: if verifiedAccount()
+        && request.auth.uid == userUid
+        && applicationPermissionActive(userUid, 'notesStatus')
+        && personalAccountActive(userUid);
+      allow create: if verifiedAccount()
+        && request.auth.uid == userUid
+        && applicationPermissionActive(userUid, 'notesStatus')
+        && personalAccountActive(userUid)
+        && request.resource.data.keys().hasOnly(['name', 'type', 'size', 'dataUrl', 'createdAt'])
+        && request.resource.data.name is string
+        && request.resource.data.name.size() <= 180
+        && request.resource.data.type is string
+        && request.resource.data.type.matches('^(image|text|application)/[^,]{1,180}$')
+        && request.resource.data.size is int
+        && request.resource.data.size >= 0
+        && request.resource.data.size <= 1000000
+        && request.resource.data.dataUrl is string
+        && request.resource.data.dataUrl.size() <= 1400000
+        && request.resource.data.createdAt == request.time;
     }
 
     // All other collections and documents are denied by default.

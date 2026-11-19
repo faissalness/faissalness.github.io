@@ -1,5 +1,5 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
-import { createUserWithEmailAndPassword, deleteUser, EmailAuthProvider, getAuth, onAuthStateChanged, reauthenticateWithCredential, sendEmailVerification, sendPasswordResetEmail, signInWithEmailAndPassword, signOut, updateProfile } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+import { createUserWithEmailAndPassword, EmailAuthProvider, getAuth, onAuthStateChanged, reauthenticateWithCredential, sendEmailVerification, sendPasswordResetEmail, signInWithEmailAndPassword, signOut, updateProfile } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 import { addDoc, collection, deleteDoc, doc, documentId, getDoc, getDocs, getFirestore, limit, onSnapshot, orderBy, query, serverTimestamp, setDoc, startAfter, Timestamp, updateDoc, writeBatch } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 import { firebaseConfig } from "./firebase-config.js";
 import { decryptNotePayload, encryptNotePayload } from "./note-crypto.mjs";
@@ -9,6 +9,7 @@ const app = initializeApp(firebaseConfig, "FJYourNotes");
 const auth = getAuth(app);
 const db = getFirestore(app);
 const API = "https://fj-api.jimyass.workers.dev";
+const AUTH_ACTION_URL = "https://faissalness.github.io/pip/";
 let activeUser = null;
 let selectedId = null;
 let unsubscribe = null;
@@ -282,6 +283,49 @@ function noteCollection(uid) {
   return collection(db, "yourNotes", uid, "notes");
 }
 
+function attachmentCollection(uid, noteId) {
+  return collection(db, "yourNotes", uid, "notes", noteId, "attachments");
+}
+
+async function uploadPipAttachments(noteId) {
+  if (!activeUser || !noteId) return;
+  const input = $("#pip-note-attachments");
+  for (const file of Array.from(input.files || [])) {
+    if (file.size > 1_000_000) throw new Error(`${file.name} exceeds 1 MB`);
+    if (!/^(image|text|application)\//.test(file.type)) throw new Error(`${file.name} has an unsupported file type`);
+    const dataUrl = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(file);
+    });
+    await addDoc(attachmentCollection(activeUser.uid, noteId), {
+      name: file.name.slice(0, 180),
+      type: file.type,
+      size: file.size,
+      dataUrl,
+      createdAt: serverTimestamp()
+    });
+  }
+  input.value = "";
+}
+
+async function refreshPipAttachments(noteId) {
+  const list = $("#pip-note-attachment-list");
+  list.replaceChildren();
+  if (!activeUser || !noteId) return;
+  const snapshot = await getDocs(query(attachmentCollection(activeUser.uid, noteId), orderBy("createdAt", "desc")));
+  for (const attachment of snapshot.docs) {
+    const data = attachment.data();
+    const link = document.createElement("a");
+    link.className = "text-button";
+    link.href = data.dataUrl;
+    link.download = data.name;
+    link.textContent = data.name;
+    list.append(link);
+  }
+}
+
 function renderNotes() {
   const list = $("#pip-note-list");
   list.replaceChildren();
@@ -365,6 +409,7 @@ function selectNote(id, repaint = true) {
   $("#pip-note-content").disabled = protectedNote;
   $("#pip-save-note").disabled = protectedNote;
   $("#pip-delete-note").hidden = !note;
+  refreshPipAttachments(id).catch(() => {});
   if (repaint) renderNotes();
 }
 
@@ -513,7 +558,6 @@ $("#pip-finalize-deletion-form").addEventListener("submit", async event => {
     await erasePersonalNotes(activeUser.uid);
     await deleteDoc(doc(db, "yourNotes", activeUser.uid));
     await palApi("/api/users/finalize-deletion", { method: "POST", body: JSON.stringify({ confirmed: true }) });
-    await deleteUser(activeUser);
     activeUser = null;
     accountDeletion = null;
     await signOut(auth);
@@ -550,7 +594,7 @@ $("#pip-register-form").addEventListener("submit", async event => {
       createdAt: serverTimestamp()
     });
     $("#pip-welcome").textContent = name ? `${name}'s Notes.` : "Your Notes.";
-    await sendEmailVerification(credential.user);
+    await sendEmailVerification(credential.user, { url: AUTH_ACTION_URL, handleCodeInApp: false });
     status("Check your inbox for the verification link to activate Your Notes.", "success");
   } catch (error) {
     if (error.code === "auth/email-already-in-use") status("Account already exists.", "error");
@@ -575,7 +619,7 @@ $("#pip-login-form").addEventListener("submit", async event => {
 $("#pip-reset").addEventListener("click", async () => {
   const email = $("#pip-login-email").value.trim();
   if (!email) return status("Enter your email address first.", "info");
-  try { await sendPasswordResetEmail(auth, email); }
+  try { await sendPasswordResetEmail(auth, email, { url: AUTH_ACTION_URL, handleCodeInApp: false }); }
   catch { /* Keep the response indistinguishable to reduce account enumeration. */ }
   status("If an account matches that address, a password reset link will arrive by email.", "success");
 });
@@ -618,7 +662,7 @@ $("#pip-switch-account").addEventListener("click", () => {
   $("#pip-login-email").focus();
 });
 $("#pip-resend-verification").addEventListener("click", async () => {
-  try { await sendEmailVerification(emailVerificationUser); status("A fresh verification link has been sent.", "success"); }
+  try { await sendEmailVerification(emailVerificationUser, { url: AUTH_ACTION_URL, handleCodeInApp: false }); status("A fresh verification link has been sent.", "success"); }
   catch { status("Could not send a new verification link yet. Wait a moment and try again.", "error"); }
 });
 $("#pip-check-verified").addEventListener("click", async () => {
@@ -654,6 +698,8 @@ $("#pip-note-form").addEventListener("submit", async event => {
       const created = await addDoc(noteCollection(activeUser.uid), { ...record, createdAt: serverTimestamp() });
       selectedId = created.id;
     }
+    await uploadPipAttachments(selectedId);
+    await refreshPipAttachments(selectedId);
     if (protectedNote) protectedNoteUnlocked = true;
     $("#pip-save-status").textContent = "Saved";
     $("#pip-save-status").classList.add("visible");

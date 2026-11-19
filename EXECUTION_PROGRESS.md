@@ -182,3 +182,15 @@ Incomplete. The production Worker now includes D1-backed PIP social and count ro
 - Complete local suite: 213 passed, 0 failed.
 - JavaScript syntax checks passed for `app.js`, `private-page.js`, `pip.js`, `notes.js`, `backend/worker.js`, and `functions/access-approval-trigger.js`.
 - `git diff --check` passed.
+
+### Final production email and permission pass — 2026-11-19
+
+- Added explicit Firebase `sendEmailVerification` and `sendPasswordResetEmail` action settings for the production Pages continuation URLs.
+- Added owner-managed Firestore `applicationPermissions/{uid}` records and note/attachment rules that deny revoked users direct access.
+- Owner approval/revoke now mirrors PIP and Notes application status to Firestore.
+- Added UID-scoped PIP attachment upload/download with 1 MB and MIME-type limits.
+- Worker finalize-deletion route now calls Firebase Identity Toolkit `accounts:delete` after recent reauthentication and deletion grace period; browser no longer performs a separate client deleteUser call.
+- Targeted 30/30 Firestore simulator and 30/30 real emulator rules checks passed.
+- Targeted Worker suite and final 213/213 suite passed.
+- Production Firebase project and 4-account inventory remain unchanged.
+- Actual production verification/reset inbox delivery was not tested because no controlled mailbox/test identity or password was available; no production account was modified or emailed.

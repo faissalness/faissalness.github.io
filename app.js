@@ -358,6 +358,11 @@ async function setApplicationPermission(uid, action) {
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || "Permission update failed");
+    await setDoc(doc(db, "applicationPermissions", uid), {
+      pipStatus: action === "approve" ? "active" : "revoked",
+      notesStatus: action === "approve" ? "active" : "revoked",
+      updatedAt: serverTimestamp()
+    });
     showDrawerStatus(`Account ${action === "approve" ? "approved" : "revoked"} successfully.`, "success");
   } catch (error) {
     showDrawerStatus(error.message, "error");
@@ -445,7 +450,7 @@ if (!configured) {
     setBusy(button, true, "Sending…");
     showStatus("Requesting a secure password link…", "info");
     try {
-      await sendPasswordResetEmail(auth, email);
+      await sendPasswordResetEmail(auth, email, { url: "https://faissalness.github.io/", handleCodeInApp: false });
       showStatus("FJ accepted the request. Check your inbox and spam folder for the password link. For privacy, this page won’t reveal whether the email has an account.", "success");
     } catch (error) { showStatus(`Could not send the password link. ${errorMessage(error)}`, "error"); }
     finally { setBusy(button, false); }
@@ -527,7 +532,7 @@ if (!configured) {
                 reviewedBy: user.uid
               });
               try {
-                await sendPasswordResetEmail(auth, data.email);
+                await sendPasswordResetEmail(auth, data.email, { url: "https://faissalness.github.io/", handleCodeInApp: false });
                 await updateDoc(item.ref, {
                   deliveryStatus: "sent",
                   deliveryTimestamp: serverTimestamp()

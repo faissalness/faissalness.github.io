@@ -68,6 +68,9 @@ const userToken = makeTestJwt({
         headers: { "Content-Type": "application/json", "Cache-Control": "public, max-age=300" }
       });
     }
+    if (String(input).startsWith("https://identitytoolkit.googleapis.com/v1/accounts:delete")) {
+      return new Response(JSON.stringify({}), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
     return originalFetch(input, init);
   };
   const workerModule = await import('../backend/worker.js');

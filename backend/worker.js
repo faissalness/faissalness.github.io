@@ -12,6 +12,7 @@
 
 const OWNER_UID = "hDbzbNTC7pOuU2UFCjFksopbgaG3";
 const PROJECT_ID = "fj-website-384fd";
+const FIREBASE_WEB_API_KEY = "AIzaSyD17U-rz-QefHSQ85EWj09O1vMQRsbZGcE";
 const SITE_ORIGIN = "https://faissalness.github.io";
 const GOOGLE_CERTS_URL = "https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com";
 
@@ -359,6 +360,14 @@ export default {
         const due = await env.DB.prepare("SELECT uid FROM registered_users WHERE uid = ? AND status = 'scheduled' AND deletion_at <= ?")
           .bind(identity.sub, Date.now()).first();
         if (!due) return new Response(JSON.stringify({ error: "The 30-day grace period has not ended" }), { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        const authHeader = request.headers.get("Authorization") || "";
+        const idToken = authHeader.replace(/^Bearer\s+/i, "");
+        const authDelete = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:delete?key=${FIREBASE_WEB_API_KEY}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ idToken })
+        });
+        if (!authDelete.ok) return new Response(JSON.stringify({ error: "Firebase account deletion could not be confirmed" }), { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         await env.DB.batch([
           env.DB.prepare("DELETE FROM pip_messages WHERE sender_uid = ? OR recipient_uid = ?").bind(identity.sub, identity.sub),
           env.DB.prepare("DELETE FROM pals WHERE uid_low = ? OR uid_high = ?").bind(identity.sub, identity.sub),

@@ -91,6 +91,10 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:1px solid var(-
 .pip-pal-compose textarea{flex:1;min-height:72px;max-height:180px;resize:vertical;padding:10px;background:#050608;border:1px solid #303135;color:var(--paper);font:13px var(--sans)}
 .pip-pal-compose .compact-btn{margin:0;padding:0 14px;min-height:42px}
 .pip-noty-list{display:grid;gap:10px;max-width:760px}
+.pip-attachments{display:grid;gap:8px;padding:10px 0;border-top:1px solid #1a1b1d}
+.pip-attachments label{font:9px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:#aaa}
+.pip-attachments input{color:#aaa}
+#pip-note-attachment-list{display:flex;gap:8px;flex-wrap:wrap}
 .pip-social-composer{max-width:760px;display:grid;gap:10px;margin-bottom:18px;padding:14px;border:1px solid #202124;background:#08090b}
 .pip-social-composer textarea{min-height:110px;resize:vertical;padding:12px;border:1px solid #303135;background:#050608;color:var(--paper)}
 .pip-social-composer select{height:38px;padding:0 10px;border:1px solid #303135;background:#050608;color:var(--paper)}
