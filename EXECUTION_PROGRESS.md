@@ -194,3 +194,14 @@ Incomplete. The production Worker now includes D1-backed PIP social and count ro
 - Targeted Worker suite and final 213/213 suite passed.
 - Production Firebase project and 4-account inventory remain unchanged.
 - Actual production verification/reset inbox delivery was not tested because no controlled mailbox/test identity or password was available; no production account was modified or emailed.
+
+### Final deployment — 2026-11-19
+
+- Implementation commit: `a7e87be833c6bad7058779d56d01672fbc8c5794`
+- Pages run: `44574689901`, successful
+- Emulator CI run: `44574689750`, successful
+- Live Pages: `https://faissalness.github.io`
+- Live PIP: `https://faissalness.github.io/pip/`
+- Live backend: `https://fj-api.jimyass.workers.dev`
+- Worker version: `bd35ac3e-0f39-4223-aa16-9f54cf303c34`
+- Remaining external action: provide a controlled production mailbox/test identity and password or authenticated Firebase session if actual inbox receipt must be verified. No such credentials exist in the current repository/session.
