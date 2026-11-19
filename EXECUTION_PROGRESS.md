@@ -47,6 +47,19 @@ Updated: 2026-11-19 (Europe/Stockholm)
 - Live unauthenticated `/api/posts` GET/POST probes return 401.
 - Worker version `fee16cbb-1cc1-4e07-a05a-78fb5598702e` deployed with migration `0007_backfill_application_permissions.sql`.
 - Added privacy-safe `/api/profiles` lookup and authenticated `/api/pals/{uid}` removal routes.
+
+### Final deployed frontend on 2026-11-19
+
+- GitHub Pages run `44562840179` succeeded for commit `e19c9f4bd4eddefcd959fab5c0e34c5d7c886e04`.
+- Live `/meet/` and `/gods/` return 200 and contain recovered original layout markers.
+- Live `/pip/` contains returning-password, profile-search, Feed, and Pal interaction markers.
+- Live Playwright desktop/mobile screenshots confirmed dark PIP/Notes presentation and neon Notes gate.
+- Live forged profile and Pal-removal requests return verified-sign-in 401 responses.
+- Automated suite: 213 passed, 0 failed.
+
+### BLOCKED BY EXTERNAL REQUIREMENT
+
+- Actual registration/email-verification/password-reset delivery and two/three separate user browser sessions require independent Firebase test identities and provider email delivery. No private credentials or test accounts should be fabricated or exposed in chat.
 - Live Playwright screenshots confirm dark desktop Meet and Gods gates, mobile PIP layout, and the Notes 03 neon-green gate.
 - A local run of the Pages allowlist assembly succeeded: 26 files, five clean route aliases, no Worker/source-map markers.
 - QR test independently decoded the JavaScript-generated QR matrix to the exact test URL and covers unsafe URL rejection.
