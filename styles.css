@@ -98,6 +98,11 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:1px solid var(-
 .pip-heading h1{font-size:clamp(2.7rem,7vw,5rem)}
 .pip-notes-layout{display:grid;grid-template-columns:minmax(230px,.42fr) 1fr;gap:18px;min-height:60vh}
 .pip-note-list-panel,.pip-editor{border:1px solid #202124;background:#060708;padding:20px}
+.pip-note-security{display:grid;gap:8px;padding:10px 0 12px;border-top:1px solid #1a1b1d;border-bottom:1px solid #1a1b1d}
+.pip-protection-toggle{display:flex;align-items:center;gap:9px;color:#aaa;font:9px var(--mono);letter-spacing:.04em}
+.pip-protection-toggle input{accent-color:var(--lime)}
+.pip-note-password-row{display:flex;align-items:center;gap:12px}
+.pip-note-password-row input{width:min(320px,100%);height:38px;padding:0 10px;background:#050608;border:1px solid var(--lime);color:var(--paper);caret-color:var(--lime)}
 .pip-list-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px}
 .pip-list-heading h2{margin:0;font-size:1.25rem;font-weight:500}
 .pip-note-list{display:flex;flex-direction:column;gap:8px;max-height:55vh;overflow-y:auto}

@@ -89,6 +89,14 @@ assert.ok(pipScript.includes('/api/pals/invite') && pipScript.includes('/api/pal
 assert.ok(fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8').includes('id="public-user-count"') && fs.readFileSync(path.join(ROOT, 'app.js'), 'utf8').includes('/api/users/count'),
   'The public homepage must request only the aggregate registered-account count');
 passedAudits += 3;
+const noteCrypto = fs.readFileSync(path.join(ROOT, 'note-crypto.mjs'), 'utf8');
+assert.ok(pipPage.includes('pip-note-protected') && pipPage.includes('pip-note-unlock') && pipScript.includes('encryptNotePayload') && pipScript.includes('decryptNotePayload'),
+  'Your Notes must provide a separate unlock flow for encrypted individual notes');
+assert.ok(noteCrypto.includes('PBKDF2') && noteCrypto.includes('AES-GCM') && noteCrypto.includes('210000') && !pipScript.includes('localStorage.setItem("note-password'),
+  'Individual note keys must be derived and used only in memory, with no password persistence');
+assert.ok(fs.readFileSync(path.join(ROOT, 'firestore.rules'), 'utf8').includes("data.title == 'Protected note'") && fs.readFileSync(path.join(ROOT, '.github', 'workflows', 'deploy-pages.yml'), 'utf8').includes('note-crypto.mjs'),
+  'Firestore must reject plaintext fields for protected notes and Pages must publish the crypto module');
+passedAudits += 3;
 console.log(" PASS: Core assets (qr.png, favicon.svg, styles.css) exist and are valid.");
 
 // 4. Verify Accessibility: Reduced-Motion and Visible Focus

@@ -2,6 +2,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/fireba
 import { createUserWithEmailAndPassword, deleteUser, EmailAuthProvider, getAuth, onAuthStateChanged, reauthenticateWithCredential, sendEmailVerification, sendPasswordResetEmail, signInWithEmailAndPassword, signOut, updateProfile } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 import { addDoc, collection, deleteDoc, doc, documentId, getDoc, getDocs, getFirestore, limit, onSnapshot, orderBy, query, serverTimestamp, setDoc, startAfter, Timestamp, updateDoc, writeBatch } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 import { firebaseConfig } from "./firebase-config.js";
+import { decryptNotePayload, encryptNotePayload } from "./note-crypto.mjs";
 
 const $ = selector => document.querySelector(selector);
 const app = initializeApp(firebaseConfig, "FJYourNotes");
@@ -16,6 +17,7 @@ let emailVerificationUser = null;
 let accountDeletion = null;
 let selectedPalUid = null;
 let palRefreshTimer = null;
+let protectedNoteUnlocked = false;
 
 async function palApi(path, options = {}) {
   if (!activeUser) throw new Error("Sign in required");
@@ -193,7 +195,7 @@ function renderNotes() {
     button.className = `pip-note-row${note.id === selectedId ? " active" : ""}`;
     const title = document.createElement("span");
     title.className = "pip-note-row-title";
-    title.textContent = note.title || "Untitled note";
+    title.textContent = note.protection ? "Protected note" : (note.title || "Untitled note");
     const date = document.createElement("span");
     date.className = "pip-note-row-date";
     const updated = note.updatedAt?.toDate?.();
@@ -209,11 +211,58 @@ function renderNotes() {
 function selectNote(id, repaint = true) {
   selectedId = id;
   const note = notes.find(item => item.id === id);
-  $("#pip-note-title").value = note?.title || "";
-  $("#pip-note-content").value = note?.content || "";
+  protectedNoteUnlocked = false;
+  const protectedNote = Boolean(note?.protection);
+  $("#pip-note-protected").checked = protectedNote;
+  $("#pip-note-protected").disabled = protectedNote;
+  $("#pip-note-password").hidden = !protectedNote;
+  $("#pip-note-password").required = protectedNote;
+  $("#pip-note-password").value = "";
+  $("#pip-note-unlock").hidden = !protectedNote;
+  $("#pip-note-lock-status").hidden = !protectedNote;
+  $("#pip-note-lock-status").textContent = protectedNote ? "This note is encrypted. Enter its password and unlock it to view or edit." : "";
+  $("#pip-note-title").value = protectedNote ? "" : (note?.title || "");
+  $("#pip-note-content").value = protectedNote ? "" : (note?.content || "");
+  $("#pip-note-title").disabled = protectedNote;
+  $("#pip-note-content").disabled = protectedNote;
+  $("#pip-save-note").disabled = protectedNote;
   $("#pip-delete-note").hidden = !note;
   if (repaint) renderNotes();
 }
+
+$("#pip-note-protected").addEventListener("change", event => {
+  const enabled = event.currentTarget.checked;
+  $("#pip-note-password").hidden = !enabled;
+  $("#pip-note-password").required = enabled;
+  $("#pip-note-lock-status").hidden = !enabled;
+  $("#pip-note-lock-status").textContent = enabled ? "The title and body are encrypted before they reach Firestore." : "";
+  if (!enabled) $("#pip-note-password").value = "";
+});
+
+$("#pip-note-unlock").addEventListener("click", async () => {
+  const note = notes.find(item => item.id === selectedId);
+  if (!note?.protection) return;
+  const button = $("#pip-note-unlock");
+  button.disabled = true;
+  try {
+    const unlocked = await decryptNotePayload(note.protection, $("#pip-note-password").value);
+    protectedNoteUnlocked = true;
+    $("#pip-note-protected").disabled = false;
+    $("#pip-note-password").required = true;
+    $("#pip-note-title").disabled = false;
+    $("#pip-note-content").disabled = false;
+    $("#pip-save-note").disabled = false;
+    $("#pip-note-title").value = unlocked.title;
+    $("#pip-note-content").value = unlocked.content;
+    $("#pip-note-unlock").hidden = true;
+    $("#pip-note-lock-status").textContent = "Unlocked in this page session. The password is not saved.";
+    $("#pip-note-title").focus();
+  } catch {
+    $("#pip-note-password").value = "";
+    $("#pip-note-password").focus();
+    status("That note password did not unlock the note.", "error");
+  } finally { button.disabled = false; }
+});
 
 function watchNotes(user) {
   unsubscribe?.();
@@ -406,11 +455,20 @@ $("#pip-note-form").addEventListener("submit", async event => {
   const title = $("#pip-note-title").value.trim().slice(0, 160);
   const content = $("#pip-note-content").value.slice(0, 20000);
   try {
-    if (selectedId) await updateDoc(doc(db, "yourNotes", activeUser.uid, "notes", selectedId), { title, content, updatedAt: serverTimestamp() });
+    const protectedNote = $("#pip-note-protected").checked;
+    if (protectedNote && !protectedNoteUnlocked && selectedId) throw new Error("Unlock this note first");
+    const password = $("#pip-note-password").value;
+    if (protectedNote && password.length < 8) throw new Error("Use a note password with at least 8 characters");
+    const protection = protectedNote ? await encryptNotePayload({ title, content }, password) : null;
+    const record = protectedNote
+      ? { title: "Protected note", content: "", protection, updatedAt: serverTimestamp() }
+      : { title, content, protection: null, updatedAt: serverTimestamp() };
+    if (selectedId) await updateDoc(doc(db, "yourNotes", activeUser.uid, "notes", selectedId), record);
     else {
-      const created = await addDoc(noteCollection(activeUser.uid), { title, content, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+      const created = await addDoc(noteCollection(activeUser.uid), { ...record, createdAt: serverTimestamp() });
       selectedId = created.id;
     }
+    if (protectedNote) protectedNoteUnlocked = true;
     $("#pip-save-status").textContent = "Saved";
     $("#pip-save-status").classList.add("visible");
     setTimeout(() => $("#pip-save-status").classList.remove("visible"), 1500);
@@ -446,6 +504,10 @@ function showPrivateNotes(user) {
     unsubscribe = null;
     notes = [];
     selectedId = null;
+    protectedNoteUnlocked = false;
+    $("#pip-note-password").value = "";
+    $("#pip-note-content").value = "";
+    $("#pip-note-title").value = "";
   }
 }
 

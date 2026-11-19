@@ -9,7 +9,7 @@ assert.ok(allowlistSection, 'Pages workflow must use an explicit public file all
 const allowlist = allowlistSection.replace(/\\/g, '').trim().split(/\s+/).filter(Boolean);
 const required = [
   'index.html', 'meet.html', 'gods.html', 'notes.html', 'random.html', 'qr.html', 'pip.html',
-  'app.js', 'private-page.js', 'notes.js', 'pip.js', 'random.js', 'qr-client.js', 'qr-tech.js', 'qr-url.js',
+  'app.js', 'private-page.js', 'notes.js', 'pip.js', 'note-crypto.mjs', 'random.js', 'qr-client.js', 'qr-tech.js', 'qr-url.js',
   'destinations.js', 'firebase-config.js', 'styles.css', 'favicon.svg', 'qr.png'
 ];
 

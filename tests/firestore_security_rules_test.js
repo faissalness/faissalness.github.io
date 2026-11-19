@@ -12,7 +12,7 @@ const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
 
-console.log("=== FIRESTORE RULES LOGIC SIMULATOR (57 CASES) ===\n");
+console.log("=== FIRESTORE RULES LOGIC SIMULATOR (60 CASES) ===\n");
 
 // Read and verify firestore.rules exists and is valid syntax
 const rulesPath = path.join(__dirname, '..', 'firestore.rules');
@@ -186,10 +186,22 @@ class RulesSimulator {
       if (!active) return false;
       if (!data || !Array.isArray(Object.keys(data))) return false;
       const keys = Object.keys(data);
-      const allowed = ['title', 'content', 'createdAt', 'updatedAt'];
-      const valid = keys.every(key => allowed.includes(key))
+      const allowed = ['title', 'content', 'createdAt', 'updatedAt', 'protection'];
+      const plain = (!Object.hasOwn(data, 'protection') || data.protection === null)
         && typeof data.title === 'string' && data.title.length <= 160
-        && typeof data.content === 'string' && data.content.length <= 20000
+        && typeof data.content === 'string' && data.content.length <= 20000;
+      const envelope = data.protection;
+      const protectedNote = envelope && typeof envelope === 'object'
+        && Object.keys(envelope).sort().join(',') === 'ciphertextHex,ivHex,saltHex,version'
+        && envelope.version === 1
+        && /^[0-9a-f]{32}$/i.test(envelope.saltHex)
+        && /^[0-9a-f]{24}$/i.test(envelope.ivHex)
+        && /^[0-9a-f]+$/i.test(envelope.ciphertextHex)
+        && envelope.ciphertextHex.length >= 32
+        && envelope.ciphertextHex.length <= 200000
+        && data.title === 'Protected note' && data.content === '';
+      const valid = keys.every(key => allowed.includes(key))
+        && (plain || protectedNote)
         && data.updatedAt === requestTime;
       if (operation === 'create') return valid && data.createdAt === requestTime;
       if (operation === 'update') {
@@ -206,7 +218,7 @@ class RulesSimulator {
 
 const sim = new RulesSimulator(mockDb);
 let passedCount = 0;
-let totalCount = 57;
+let totalCount = 60;
 
 function runTest(num, name, condition) {
   assert.ok(condition, `Test ${num} FAILED: ${name}`);
@@ -399,5 +411,14 @@ runTest(56, "Personal notes are locked during account deletion grace period -> D
 runTest(57, "Personal notes are available for confirmed deletion after the grace period -> ALLOWED",
   (() => { sim.db.yourNotes[USER_UID] = { deletionStatus: "ready", deletionAt: Date.now() - 1 }; return sim.evaluate({ auth: { uid: USER_UID, emailVerified: true }, path: `yourNotes/${USER_UID}/notes/n1`, operation: "delete" }) === true; })());
 
+runTest(58, "Your Notes encrypted note envelope is accepted without plaintext content",
+  (() => { sim.db.yourNotes[USER_UID] = { deletionStatus: "active" }; return sim.evaluate({ auth: { uid: USER_UID, emailVerified: true }, path: `yourNotes/${USER_UID}/notes/encrypted`, operation: "create", requestTime: 100, data: { title: "Protected note", content: "", protection: { version: 1, saltHex: "a".repeat(32), ivHex: "b".repeat(24), ciphertextHex: "c0".repeat(16) }, createdAt: 100, updatedAt: 100 } }) === true; })());
+
+runTest(59, "A protected Firestore note cannot include plaintext title or body",
+  sim.evaluate({ auth: { uid: USER_UID, emailVerified: true }, path: `yourNotes/${USER_UID}/notes/leak`, operation: "create", requestTime: 100, data: { title: "Sensitive title", content: "Sensitive body", protection: { version: 1, saltHex: "a".repeat(32), ivHex: "b".repeat(24), ciphertextHex: "c0".repeat(16) }, createdAt: 100, updatedAt: 100 } }) === false);
+
+runTest(60, "Protected notes reject truncated ciphertext before it reaches Firestore",
+  (() => { sim.db.yourNotes[USER_UID] = { deletionStatus: "active" }; return sim.evaluate({ auth: { uid: USER_UID, emailVerified: true }, path: `yourNotes/${USER_UID}/notes/short`, operation: "create", requestTime: 100, data: { title: "Protected note", content: "", protection: { version: 1, saltHex: "a".repeat(32), ivHex: "b".repeat(24), ciphertextHex: "c0ffee" }, createdAt: 100, updatedAt: 100 } }) === false; })());
+
 console.log(`\n=== FIRESTORE RULES VERIFICATION RESULT: ${passedCount} / ${totalCount} PASSED ===`);
-assert.strictEqual(passedCount, 57, "All 57 Firestore rules simulator cases must pass!");
+assert.strictEqual(passedCount, 60, "All 60 Firestore rules simulator cases must pass!");

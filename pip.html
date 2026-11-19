@@ -62,6 +62,7 @@
         <aside class="pip-note-list-panel"><div class="pip-list-heading"><h2>Notes</h2><button class="compact-btn primary-button" id="pip-new-note" type="button">New note +</button></div><div id="pip-note-list" class="pip-note-list" aria-live="polite"></div></aside>
         <form id="pip-note-form" class="pip-editor">
           <div class="pip-editor-heading"><input id="pip-note-title" class="note-title-input" maxlength="160" placeholder="Untitled note" aria-label="Note title"><button id="pip-delete-note" class="compact-btn danger-btn" type="button" hidden>Delete</button></div>
+          <div class="pip-note-security"><label class="pip-protection-toggle"><input id="pip-note-protected" type="checkbox"> Protect this note with a separate password</label><div class="pip-note-password-row"><label class="sr-only" for="pip-note-password">Note protection password</label><input id="pip-note-password" type="password" minlength="8" maxlength="256" autocomplete="off" placeholder="Note password (8+ characters)" hidden><button id="pip-note-unlock" class="text-button" type="button" hidden>Unlock note</button></div><p id="pip-note-lock-status" class="micro-note" role="status" aria-live="polite" hidden></p></div>
           <textarea id="pip-note-content" class="note-textarea pip-textarea" maxlength="20000" placeholder="Write something…" aria-label="Note content"></textarea>
           <div class="pip-editor-footer"><span id="pip-save-status" class="save-indicator" role="status" aria-live="polite"></span><button class="primary-button compact-btn" id="pip-save-note" type="submit">Save note <span>↗</span></button></div>
         </form>
@@ -100,6 +101,6 @@
     </section>
     <footer class="page-footer"><a href="/">← Back to the signal</a><span>PIP / NOTES 004</span></footer>
   </main>
-  <script type="module" src="pip.js?v=20261119-1"></script>
+  <script type="module" src="pip.js?v=20261119-2"></script>
 </body>
 </html>

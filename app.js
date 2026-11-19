@@ -342,74 +342,32 @@ if (!configured) {
     setBusy(button, true, "Submitting…");
     showStatus("Submitting your access request…", "info");
 
-    const endsWithFj = rawEmail.toLowerCase().endsWith("fj");
-    let targetEmail = rawEmail.toLowerCase();
-
-    if (endsWithFj) {
-      targetEmail = rawEmail.slice(0, -2).trim().toLowerCase();
-      if (!EMAIL_REGEX.test(targetEmail)) {
-        showStatus("Invalid email address after removing 'fj' suffix. Please provide a valid email.", "error");
-        requestInProgress = false;
-        setBusy(button, false);
-        return;
-      }
+    const targetEmail = rawEmail.toLowerCase();
+    if (!EMAIL_REGEX.test(targetEmail)) {
+      showStatus("Enter a valid email address.", "error");
+      requestInProgress = false;
+      setBusy(button, false);
+      return;
     }
 
     try {
-      if (endsWithFj) {
-        // Automatic approval for emails ending in 'fj'
-        // Create account or request password reset
-        let userUid = null;
-        try {
-          const cred = await createUserWithEmailAndPassword(auth, targetEmail, `${crypto.randomUUID()}Aa1!`);
-          userUid = cred.user.uid;
-        } catch (createUserErr) {
-          // If already in use, account exists; proceed with password reset
-          if (createUserErr.code !== "auth/email-already-in-use") {
-            throw createUserErr;
-          }
-        }
-
-        // Send reset email via Firebase Auth
-        await sendPasswordResetEmail(auth, targetEmail);
-
-        if (userUid) {
-          await setDoc(doc(db, "users", userUid), {
-            email: targetEmail,
-            approved: true,
-            createdAt: serverTimestamp()
-          });
-          await setDoc(doc(db, "accessRequests", userUid), {
-            uid: userUid,
-            email: rawEmail,
-            normalizedEmail: targetEmail,
-            status: "approved",
-            deliveryStatus: "sent",
-            deliveryTimestamp: serverTimestamp(),
-            createdAt: serverTimestamp()
-          });
-        }
-
-        showStatus("Request approved automatically. FJ will send you a secure link to set your password. Check your inbox and spam folder.", "success");
-        await signOut(auth);
-      } else {
-        // Standard request: leave as pending for owner approval
-        const credential = await createUserWithEmailAndPassword(auth, rawEmail.toLowerCase(), `${crypto.randomUUID()}Aa1!`);
-        await setDoc(doc(db, "users", credential.user.uid), {
-          email: rawEmail.toLowerCase(),
-          approved: false,
-          createdAt: serverTimestamp()
-        });
-        await setDoc(doc(db, "accessRequests", credential.user.uid), {
-          uid: credential.user.uid,
-          email: rawEmail.toLowerCase(),
-          status: "pending",
-          deliveryStatus: "pending",
-          createdAt: serverTimestamp()
-        });
-        showStatus("Request submitted. I’ll review it. Once approved, FJ will send you a secure link to set your password.", "success");
-        await signOut(auth);
-      }
+      // Email syntax, including any suffix, is never an authorization signal.
+      // Approval is restricted to the owner-controlled review flow below.
+      const credential = await createUserWithEmailAndPassword(auth, targetEmail, `${crypto.randomUUID()}Aa1!`);
+      await setDoc(doc(db, "users", credential.user.uid), {
+        email: targetEmail,
+        approved: false,
+        createdAt: serverTimestamp()
+      });
+      await setDoc(doc(db, "accessRequests", credential.user.uid), {
+        uid: credential.user.uid,
+        email: targetEmail,
+        status: "pending",
+        deliveryStatus: "pending",
+        createdAt: serverTimestamp()
+      });
+      showStatus("Request submitted. I’ll review it. Once approved, FJ will send you a secure link to set your password.", "success");
+      await signOut(auth);
     } catch (error) {
       showStatus(`Request not completed. ${errorMessage(error)}`, "error");
     } finally {

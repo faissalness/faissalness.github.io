@@ -38,6 +38,18 @@ try {
   await check("Other account cannot list the owner's notes", getDocs(collection(bob, 'yourNotes', 'alice', 'notes')), assertFails);
   await check("Other account cannot create under the owner's UID", setDoc(notePath(bob, 'alice', 'forged'), note), assertFails);
   await check('Unverified email cannot read its own notes', getDoc(notePath(unverified, 'unverified', 'one')), assertFails);
+  const encryptedNote = {
+    title: 'Protected note', content: '',
+    protection: { version: 1, saltHex: 'a'.repeat(32), ivHex: 'b'.repeat(24), ciphertextHex: 'c0'.repeat(16) },
+    createdAt: serverTimestamp(), updatedAt: serverTimestamp()
+  };
+  await check('A note with an encrypted payload can be stored without plaintext', setDoc(notePath(alice, 'alice', 'protected'), encryptedNote), assertSucceeds);
+  await check('A protected note cannot put its plaintext title or body into Firestore', setDoc(notePath(alice, 'alice', 'leaking'), {
+    ...encryptedNote, title: 'Sensitive title', content: 'Sensitive body', createdAt: serverTimestamp(), updatedAt: serverTimestamp()
+  }), assertFails);
+  await check('A protected note cannot store a truncated encrypted payload', setDoc(notePath(alice, 'alice', 'short-ciphertext'), {
+    ...encryptedNote, protection: { ...encryptedNote.protection, ciphertextHex: 'c0ffee' }, createdAt: serverTimestamp(), updatedAt: serverTimestamp()
+  }), assertFails);
   await check('Anonymous access is denied', getDoc(notePath(anonymous, 'alice', 'one')), assertFails);
   await check('Role injection into note fields is denied', setDoc(notePath(alice, 'alice', 'role'), { ...note, role: 'owner' }), assertFails);
   await check('A user cannot update an existing note with a forged owner path', updateDoc(notePath(bob, 'alice', 'one'), { content: 'stolen' }), assertFails);
@@ -94,8 +106,8 @@ try {
   await check('User can remove the lifecycle record after deletion becomes due', deleteDoc(accountPath), assertSucceeds);
   await check('Admin cannot create owner authorization records', setDoc(doc(admin, 'admins', 'admin-b'), { active: true }), assertFails);
 
-  console.log(`FIRESTORE EMULATOR: ${passed}/27 passed`);
-  assert.equal(passed, 27);
+  console.log(`FIRESTORE EMULATOR: ${passed}/30 passed`);
+  assert.equal(passed, 30);
 } finally {
   await environment.cleanup();
 }
