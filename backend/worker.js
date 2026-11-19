@@ -31,6 +31,113 @@ function hexToBuffer(hexString) {
   return bytes;
 }
 
+async function readBoundedBody(request, maxBytes) {
+  const reader = request.body?.getReader();
+  if (!reader) return new Uint8Array();
+  const chunks = [];
+  let length = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    length += value.byteLength;
+    if (length > maxBytes) {
+      await reader.cancel();
+      throw new RangeError("Image exceeds the upload limit");
+    }
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(length);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return bytes;
+}
+
+function pngCrc32(bytes, start, end) {
+  let crc = 0xffffffff;
+  for (let offset = start; offset < end; offset++) {
+    crc ^= bytes[offset];
+    for (let bit = 0; bit < 8; bit++) crc = (crc >>> 1) ^ ((crc & 1) ? 0xedb88320 : 0);
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function validProfileImage(bytes, mimeType) {
+  let width = 0;
+  let height = 0;
+  const pngSignature = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+  if (mimeType === "image/png" && bytes.length >= 57
+    && pngSignature.every((value, index) => bytes[index] === value)) {
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    let offset = 8;
+    let hasHeader = false;
+    let hasImageData = false;
+    let hasEnd = false;
+    while (offset + 12 <= bytes.length) {
+      const length = view.getUint32(offset);
+      const type = String.fromCharCode(...bytes.slice(offset + 4, offset + 8));
+      const dataStart = offset + 8;
+      const crcOffset = dataStart + length;
+      if (crcOffset + 4 > bytes.length
+        || pngCrc32(bytes, offset + 4, crcOffset) !== view.getUint32(crcOffset)) return false;
+      if (!hasHeader) {
+        if (type !== "IHDR" || length !== 13) return false;
+        width = view.getUint32(dataStart);
+        height = view.getUint32(dataStart + 4);
+        hasHeader = true;
+      } else if (type === "IHDR") return false;
+      if (type === "IDAT" && length) hasImageData = true;
+      offset = crcOffset + 4;
+      if (type === "IEND") {
+        if (length !== 0 || offset !== bytes.length) return false;
+        hasEnd = true;
+        break;
+      }
+    }
+    if (!hasHeader || !hasImageData || !hasEnd) return false;
+  } else if (mimeType === "image/webp"
+    && bytes.length >= 30
+    && String.fromCharCode(...bytes.slice(0, 4)) === "RIFF"
+    && String.fromCharCode(...bytes.slice(8, 12)) === "WEBP"
+    && new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getUint32(4, true) === bytes.length - 8) {
+    const chunk = String.fromCharCode(...bytes.slice(12, 16));
+    if (chunk === "VP8X") {
+      width = 1 + bytes[24] + (bytes[25] << 8) + (bytes[26] << 16);
+      height = 1 + bytes[27] + (bytes[28] << 8) + (bytes[29] << 16);
+    } else if (chunk === "VP8 " && bytes.length >= 30
+      && bytes[23] === 0x9d && bytes[24] === 0x01 && bytes[25] === 0x2a) {
+      width = (bytes[26] | (bytes[27] << 8)) & 0x3fff;
+      height = (bytes[28] | (bytes[29] << 8)) & 0x3fff;
+    } else if (chunk === "VP8L" && bytes[20] === 0x2f) {
+      width = 1 + bytes[21] + ((bytes[22] & 0x3f) << 8);
+      height = 1 + (bytes[22] >> 6) + (bytes[23] << 2) + ((bytes[24] & 0x0f) << 10);
+    }
+  } else if (mimeType === "image/jpeg" && bytes.length >= 4
+    && bytes[0] === 0xff && bytes[1] === 0xd8
+    && bytes[bytes.length - 2] === 0xff && bytes[bytes.length - 1] === 0xd9) {
+    let offset = 2;
+    let hasFrame = false;
+    let hasScan = false;
+    while (offset + 9 < bytes.length) {
+      if (bytes[offset] !== 0xff) break;
+      const marker = bytes[offset + 1];
+      if (marker === 0xda) { hasScan = true; break; }
+      const segmentLength = (bytes[offset + 2] << 8) | bytes[offset + 3];
+      if (segmentLength < 2 || offset + 2 + segmentLength > bytes.length) break;
+      if ([0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf].includes(marker)) {
+        height = (bytes[offset + 5] << 8) | bytes[offset + 6];
+        width = (bytes[offset + 7] << 8) | bytes[offset + 8];
+        hasFrame = true;
+      }
+      offset += 2 + segmentLength;
+    }
+    if (!hasFrame || !hasScan) return false;
+  }
+  return width > 0 && height > 0 && width <= 4096 && height <= 4096 && width * height <= 16_000_000;
+}
+
 async function computePbkdf2Hash(password, saltBytes) {
   const enc = new TextEncoder();
   const keyMaterial = await crypto.subtle.importKey(
@@ -184,7 +291,7 @@ export default {
     const requestOrigin = request.headers.get("Origin");
     const corsHeaders = {
       "Vary": "Origin",
-      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+      "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
       "Access-Control-Allow-Headers": "Content-Type, Authorization",
       "Cache-Control": "no-store",
       "X-Content-Type-Options": "nosniff",
@@ -235,21 +342,24 @@ export default {
         if (identity.email_verified !== true) return new Response(JSON.stringify({ error: "Verified email required" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         const emailDigest = await emailLookupDigest(String(identity.email || "").trim().toLowerCase(), env.PAL_LOOKUP_SECRET);
         const email = String(identity.email || "").trim().toLowerCase();
-        const localPart = email.split("@")[0] || "";
-        const eligible = localPart.endsWith("fj");
-        const status = eligible ? "active" : "pending";
+        const isOwner = identity.sub === OWNER_UID;
+        const status = isOwner ? "active" : "pending";
         await env.DB.prepare("INSERT OR IGNORE INTO registered_users (uid, registered_at, display_name, email_digest, status) VALUES (?, ?, ?, ?, ?)")
           .bind(identity.sub, Date.now(), String(identity.name || "").slice(0, 80), emailDigest, status).run();
         await env.DB.prepare("UPDATE registered_users SET display_name = ?, email_digest = ? WHERE uid = ?")
           .bind(String(identity.name || "").slice(0, 80), emailDigest, identity.sub).run();
+        if (isOwner) {
+          await env.DB.prepare("UPDATE registered_users SET status = 'active', pip_status = 'active', notes_status = 'active', deletion_at = NULL WHERE uid = ?")
+            .bind(identity.sub).run();
+        }
         const existing = await env.DB.prepare("SELECT status, pip_status AS pipStatus, notes_status AS notesStatus FROM registered_users WHERE uid = ?").bind(identity.sub).first();
-        const pipStatus = (existing?.pipStatus === "active" || existing?.status === "active" || eligible) ? "active" : "pending";
-        const notesStatus = (existing?.notesStatus === "active" || existing?.status === "active" || eligible) ? "active" : "pending";
+        const pipStatus = (existing?.pipStatus === "active" || existing?.status === "active") ? "active" : "pending";
+        const notesStatus = (existing?.notesStatus === "active" || existing?.status === "active") ? "active" : "pending";
         await env.DB.prepare("UPDATE registered_users SET pip_status = ?, notes_status = ? WHERE uid = ?")
           .bind(pipStatus, notesStatus, identity.sub).run();
         const account = await env.DB.prepare("SELECT status, deletion_at AS deletionAt FROM registered_users WHERE uid = ?").bind(identity.sub).first();
         const permissions = await env.DB.prepare("SELECT pip_status AS pipStatus, notes_status AS notesStatus FROM registered_users WHERE uid = ?").bind(identity.sub).first();
-        return new Response(JSON.stringify({ success: true, status: account?.status || status, eligible, pipStatus: permissions?.pipStatus || "pending", notesStatus: permissions?.notesStatus || "pending" }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        return new Response(JSON.stringify({ success: true, status: account?.status || status, eligible: isOwner, pipStatus: permissions?.pipStatus || "pending", notesStatus: permissions?.notesStatus || "pending" }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       } catch (_) {
         return new Response(JSON.stringify({ error: "Registration could not be recorded" }), { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
@@ -291,6 +401,73 @@ export default {
         return new Response(JSON.stringify({ profiles: result.results || [] }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       } catch (_) {
         return new Response(JSON.stringify({ error: "Profiles unavailable" }), { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+    }
+
+    const profilePhotoMatch = /^\/api\/profiles\/([A-Za-z0-9_-]{1,128})\/photo$/.exec(url.pathname);
+    if (profilePhotoMatch && ["GET", "POST", "DELETE"].includes(request.method)) {
+      try {
+        const identity = await readIdentity();
+        if (!identity || identity.email_verified !== true) {
+          return new Response(JSON.stringify({ error: "Verified sign-in required" }), {
+            status: identity ? 403 : 401, headers: { ...corsHeaders, "Content-Type": "application/json" }
+          });
+        }
+        const targetUid = profilePhotoMatch[1];
+        if (!await accountIsActive(identity.sub) || !await accountIsActive(targetUid)) {
+          return new Response(JSON.stringify({ error: "Active PIP accounts required" }), {
+            status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" }
+          });
+        }
+        if (request.method !== "GET" && targetUid !== identity.sub) {
+          return new Response(JSON.stringify({ error: "You can only change your own profile photo" }), {
+            status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" }
+          });
+        }
+        if (request.method === "GET") {
+          const photo = await env.DB.prepare("SELECT mime_type AS mimeType, image_data AS imageData FROM profile_photos WHERE uid = ?")
+            .bind(targetUid).first();
+          if (!photo) return new Response(null, { status: 404, headers: corsHeaders });
+          return new Response(photo.imageData, {
+            status: 200,
+            headers: {
+              ...corsHeaders,
+              "Cache-Control": "private, no-store",
+              "Content-Type": photo.mimeType,
+              "Content-Disposition": "inline",
+              "X-Content-Type-Options": "nosniff"
+            }
+          });
+        }
+        if (request.method === "DELETE") {
+          await env.DB.prepare("DELETE FROM profile_photos WHERE uid = ?").bind(identity.sub).run();
+          return new Response(null, { status: 204, headers: corsHeaders });
+        }
+        const mimeType = (request.headers.get("Content-Type") || "").split(";")[0].trim().toLowerCase();
+        if (!["image/png", "image/jpeg", "image/webp"].includes(mimeType)) {
+          return new Response(JSON.stringify({ error: "Choose a PNG, JPEG, or WebP image" }), {
+            status: 415, headers: { ...corsHeaders, "Content-Type": "application/json" }
+          });
+        }
+        const bytes = await readBoundedBody(request, 262144);
+        if (!validProfileImage(bytes, mimeType)) {
+          return new Response(JSON.stringify({ error: "The image is invalid or exceeds 4096 × 4096 pixels" }), {
+            status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" }
+          });
+        }
+        await env.DB.prepare(`INSERT INTO profile_photos (uid, mime_type, image_data, size, updated_at)
+          VALUES (?, ?, ?, ?, ?)
+          ON CONFLICT(uid) DO UPDATE SET mime_type = excluded.mime_type, image_data = excluded.image_data,
+          size = excluded.size, updated_at = excluded.updated_at`)
+          .bind(identity.sub, mimeType, bytes, bytes.byteLength, Date.now()).run();
+        return new Response(JSON.stringify({ success: true }), {
+          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" }
+        });
+      } catch (error) {
+        const tooLarge = error instanceof RangeError;
+        return new Response(JSON.stringify({ error: tooLarge ? "Profile photo must be 256 KB or smaller" : "Profile photo service unavailable" }), {
+          status: tooLarge ? 413 : 503, headers: { ...corsHeaders, "Content-Type": "application/json" }
+        });
       }
     }
 
@@ -414,7 +591,7 @@ export default {
         if (!identity) return new Response(JSON.stringify({ error: "Access denied" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         if (!await accountIsActive(identity.sub)) return new Response(JSON.stringify({ error: "Active PIP account required" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         const emailDigest = identity.email_verified === true && typeof identity.email === "string" ? await emailLookupDigest(identity.email.trim().toLowerCase(), env.PAL_LOOKUP_SECRET) : "";
-        const result = await env.DB.prepare(`SELECT id, inviter_uid AS inviterUid, inviter_name AS inviterName, status, created_at AS createdAt,
+        const result = await env.DB.prepare(`SELECT id, inviter_uid AS inviterUid, inviter_name AS inviterName, recipient_uid AS recipientUid, status, created_at AS createdAt,
           CASE WHEN inviter_uid = ? THEN 'sent' ELSE 'received' END AS direction
           FROM pal_invitations WHERE (inviter_uid = ? AND status IN ('pending', 'accepted')) OR (email_digest = ? AND status = 'pending')
           ORDER BY created_at DESC LIMIT 100`).bind(identity.sub, identity.sub, emailDigest).all();
@@ -467,8 +644,8 @@ export default {
             .bind(id, identity.sub, text, visibility, now, now).run();
           return new Response(JSON.stringify({ success: true, id }), { status: 201, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         }
-        const posts = await env.DB.prepare(`SELECT p.id, p.author_uid AS authorUid, p.body, p.visibility, p.created_at AS createdAt
-          FROM social_posts p
+        const posts = await env.DB.prepare(`SELECT p.id, p.author_uid AS authorUid, u.display_name AS authorName, p.body, p.visibility, p.created_at AS createdAt
+          FROM social_posts p LEFT JOIN registered_users u ON u.uid = p.author_uid
           WHERE p.deletion_status = 'active'
             AND (p.author_uid = ? OR (p.visibility = 'friends' AND EXISTS (
               SELECT 1 FROM pals q

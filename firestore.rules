@@ -52,8 +52,10 @@ service cloud.firestore {
     }
 
     function applicationPermissionActive(userUid, appName) {
-      return exists(/databases/$(database)/documents/applicationPermissions/$(userUid))
-        && get(/databases/$(database)/documents/applicationPermissions/$(userUid)).data[appName] == 'active';
+      return owner() || (exists(/databases/$(database)/documents/applicationPermissions/$(userUid))
+        ? appName in get(/databases/$(database)/documents/applicationPermissions/$(userUid)).data
+          && get(/databases/$(database)/documents/applicationPermissions/$(userUid)).data[appName] == 'active'
+        : false);
     }
 
     function personalDeletionReady(userUid) {

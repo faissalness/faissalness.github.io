@@ -62,8 +62,13 @@ assert.ok(fs.existsSync(path.join(ROOT, 'favicon.svg')), "favicon.svg must exist
 assert.ok(fs.existsSync(path.join(ROOT, 'styles.css')), "styles.css must exist");
 passedAudits += 3;
 const qrPage = fs.readFileSync(path.join(ROOT, 'qr.html'), 'utf8');
-assert.ok(qrPage.includes('<h1>QR-tech <span>05</span></h1>') && qrPage.includes('qr-tech.js'),
-  'QR-tech 05 must have a dedicated page and load its generator');
+assert.ok(qrPage.includes('class="qr-tech-page"') && qrPage.includes('qr-tech.js')
+  && qrPage.includes('class="qr-tech-image"')
+  && !/<main[^>]*>[\s\S]*<(?:h1|h2|p|footer|button)\b/i.test(qrPage),
+  'QR-tech must show only its generated code below the generic navigation');
+assert.ok(fs.readFileSync(path.join(ROOT, 'styles.css'), 'utf8').includes('.qr-tech-body:before{display:none}')
+  && fs.readFileSync(path.join(ROOT, 'qr-tech.js'), 'utf8').includes('generateQrMatrix(destination, 6, "M")'),
+  'QR-tech must render a high-contrast version-6 QR on a flat dark background');
 assert.ok(fs.readFileSync(path.join(ROOT, '.github', 'workflows', 'deploy-pages.yml'), 'utf8').includes('dist/qr/index.html'),
   'Pages workflow must publish the clean /qr/ route');
 const pipPage = fs.readFileSync(path.join(ROOT, 'pip.html'), 'utf8');
@@ -77,6 +82,12 @@ assert.ok(pipPage.includes('id="pip-returning"') && pipPage.includes('id="pip-re
 assert.ok(pipScript.includes('pipStatus') && fs.readFileSync(path.join(ROOT, 'backend', 'worker.js'), 'utf8').includes('/api/admin/permissions')
   && fs.readFileSync(path.join(ROOT, 'backend', 'worker.js'), 'utf8').includes('/api/admin/lookup'),
   'PIP and Your Notes access must be gated by trusted server-side application permissions');
+assert.ok(pipScript.includes('.value.trim().toLowerCase()')
+  && pipScript.includes('pip-returning-mode')
+  && pipScript.includes('showOwnProfilePhoto')
+  && fs.readFileSync(path.join(ROOT, 'backend', 'worker.js'), 'utf8').includes('/photo')
+  && fs.existsSync(path.join(ROOT, 'backend', 'migrations', '0008_profile_photos.sql')),
+  'PIP login casing, password-only returning state, and trusted profile photo storage must be implemented');
 assert.ok(pipScript.includes('AUTH_ACTION_URL') && pipScript.includes('handleCodeInApp: false')
   && fs.readFileSync(path.join(ROOT, 'app.js'), 'utf8').includes('handleCodeInApp: false'),
   'Production verification/reset emails must use explicit Pages action continuation URLs');

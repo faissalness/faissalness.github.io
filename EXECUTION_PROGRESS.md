@@ -205,3 +205,33 @@ Incomplete. The production Worker now includes D1-backed PIP social and count ro
 - Live backend: `https://fj-api.jimyass.workers.dev`
 - Worker version: `bd35ac3e-0f39-4223-aa16-9f54cf303c34`
 - Remaining external action: provide a controlled production mailbox/test identity and password or authenticated Firebase session if actual inbox receipt must be verified. No such credentials exist in the current repository/session.
+
+## Current execution status — 2026-11-19
+
+This status supersedes earlier completion notes where they conflict, including the historical email-suffix eligibility statement. No production Auth account was created, deleted, modified, or emailed.
+
+### COMPLETE
+
+- Fixed PIP email normalization (`toLowerCase`), returning-user state handling, and the password-only returning screen. The screen is implemented only on `/pip/`, reuses the Notes 03 neon-green input treatment, remembers the identifier after logout, and offers an explicit account switch. **Frontend publication/live verification is still pending below.**
+- Owner authorization is tied to the exact trusted owner UID. The owner can use the PIP `Your Notes` path without an `applicationPermissions` mirror; other users require an explicit active permission. Removed the unsafe verified-email `fj` suffix self-approval path from both Firestore rules and Worker registration. New non-owner registrations remain pending until owner approval.
+- Deployed Firestore rules to `fj-website-384fd`; the rules compile and release completed successfully. Emulator assertions prove owner access without a mirror and deny suffix-only, revoked, cross-UID, unverified, and forged-session access.
+- Deployed the D1 profile-photo migration and Worker. Migration `0008_profile_photos.sql` is applied; Worker version `ddae51c1-313c-4fef-ad05-e313f934a443` includes owner-only photo changes, active-account reads, bounded upload size, backend MIME/signature/dimension validation, default-avatar fallback, and delete support. Worker tests cover upload, retrieval, denial, corruption rejection, and removal. Browser UI tests cover preview, save, reload persistence, and removal against a test API stub.
+- Fixed white-on-dark QR module rendering and reduced QR-tech to generic navigation plus the centered QR on a near-black background. The independent Python decoder verified the exact payload at 420, 330, and 220 pixel render sizes with a four-module quiet zone. Production page/device-camera verification is pending frontend publication; no physical iPhone/Android camera was available.
+- Full local regression suite: **213 passed, 0 failed**. Emulator master command passed: Auth **18/18**, Firestore **33/33**, and one Playwright test using three isolated synthetic accounts. Browser coverage includes verification/reset action codes and continuations, wrong/correct passwords, logout, reload/session restoration, account switching, and profile-photo UI. No production identity was used by these tests.
+- Production read-only account inventory: four Firebase Auth accounts total. The three requested identities exist, match the expected owner/known account UIDs, and are email-verified. The owner UID matches the configured trusted owner. In D1, only the owner has a registration record; PIP and Notes are active, but no display name/profile is stored. The other two identities have no D1 profile or PIP/Notes permission record. No true `admin` custom claim was present in the export; the Worker grants administrative authority only to the exact owner UID. No Firestore `admins` collection inventory was performed.
+- Production Worker root and count endpoints return 200; unauthenticated profile-photo access returns 401. The photo migration is applied and the Worker deployment is live.
+
+### INCOMPLETE
+
+- GitHub Pages still serves its prior build. The current `/pip/`, QR-tech, profile-photo UI, and other frontend changes have not yet been pushed or verified live. The source and tests remain local until the next commit/push and Pages Actions run.
+- No production sign-in, logout/re-login, account switch, owner PIP session, or successful real-user profile-photo workflow was exercised; no controlled browser session/password was available. Owner D1 status and deployed rules are verified, but production UI authorization is not end-to-end verified.
+- Production QR decoding, exact visible-text check, and real-device camera scanning have not been performed. The source-level and independent rendered-image checks pass only locally.
+- Firebase Authentication's production Email/Password setting, authorized-domain list, sender/templates, and redirect handling are not verified from the Firebase CLI account inventory. The app's production config uses the expected Firebase project/auth domain and PIP action URL, but that does not prove Console configuration.
+- Legacy shared `/notes/` sessions remain fail-closed. Firestore `activeNotesSessions` records may be issued only by trusted server code; the available Worker has no Firebase Admin credential and cannot safely issue one. The PIP UID-scoped `Your Notes` data path is separate and owner-authorized.
+- Full unattended Firebase Auth + Firestore deletion, automated approval/owner-notification emails, complete application-admin roles, and the remaining attachment/offline/retention acceptance requirements from the original specifications are not complete. Existing deletion still requires user confirmation; Worker scheduled cleanup covers D1 social records only.
+
+### BLOCKED
+
+- **Actual production verification/reset inbox delivery:** not tested; no email was sent. The website implements Firebase's built-in `sendEmailVerification` and `sendPasswordResetEmail` calls, and their real action codes work in the emulator. No custom SMTP credential is required for those Firebase Auth actions. Production Console settings and inbox delivery remain unverified. A controlled mailbox session and access to Firebase Authentication settings are needed to verify receipt, templates, authorized domains, and actual production link completion.
+- **Legacy shared Notes trusted sessions and unattended full deletion:** no Firebase Admin/service-account credential or trusted Firestore session issuer is configured in Worker secrets. Only the unrelated PIP lookup secret is present. Do not bypass Firestore's server-only session rule; provision an approved trusted backend credential/service before enabling these operations.
+- **Approval and owner-notification email:** this is not Firebase Auth verification/reset email. No trusted notification sender is implemented or configured; it requires an approved server-side provider/service.

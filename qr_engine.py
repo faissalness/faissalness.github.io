@@ -63,6 +63,7 @@ EC_TABLE_M = {
     3: (70, 26, 1, 44, 0, 0),
     4: (100, 18, 2, 32, 0, 0),  # 2 blocks of (18 EC, 32 data)
     5: (134, 24, 2, 43, 0, 0),
+    6: (172, 16, 4, 27, 0, 0),
 }
 
 # For EC level L:
@@ -79,6 +80,7 @@ ALIGNMENT_PATTERNS = {
     3: [6, 22],
     4: [6, 26],
     5: [6, 30],
+    6: [6, 34],
 }
 
 def get_format_bits(ec_level, mask_pattern):

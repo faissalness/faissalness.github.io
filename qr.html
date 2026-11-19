@@ -11,7 +11,7 @@
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="styles.css?v=20261118-1">
 </head>
-<body class="site-body">
+<body class="site-body qr-tech-body">
   <header class="topbar">
       <a class="site-mark" href="/" aria-label="FJ home">FJ</a>
     <nav class="site-nav" aria-label="FJ pages">
@@ -22,16 +22,8 @@
       <a href="/qr/" aria-current="page">QR-tech <span>05</span></a>
     </nav>
   </header>
-  <main class="qr-page">
-    <p class="eyebrow">FJ / 05</p>
-    <h1>QR-tech <span>05</span></h1>
-    <p class="qr-description">A scan into a random public destination.</p>
-    <a class="qr-artifact" id="qr-download" download="fj-qr-tech.svg" aria-label="Download this QR code as an SVG image">
-      <img id="qr-tech-image" alt="A scannable QR code for the displayed destination" width="360" height="360">
-    </a>
-    <p class="qr-destination" id="qr-destination" role="status" aria-live="polite">Finding a destination…</p>
-    <div class="qr-actions"><button class="primary-button" id="qr-refresh" type="button">New destination <span>↻</span></button><a class="text-button" id="qr-open" target="_blank" rel="noopener noreferrer">Open destination ↗</a></div>
-    <footer class="page-footer"><a href="/">← Back to the signal</a><span>QR-TECH / 005</span></footer>
+  <main class="qr-tech-page">
+    <img id="qr-tech-image" class="qr-tech-image" alt="QR code for a random Wikipedia article" width="420" height="420" hidden>
   </main>
   <script type="module" src="qr-tech.js?v=20261118-1"></script>
 </body>

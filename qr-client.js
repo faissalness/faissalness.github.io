@@ -358,23 +358,13 @@ export function renderQrSvg(matrix, color = "#101827", bgColor = "#ffffff", bord
   const boxSize = 10;
   const pixelDimension = totalSize * boxSize;
 
-  function inFinder(r, c) {
-    return (r < 8 && c < 8) || (r < 8 && c >= size - 8) || (r >= size - 8 && c < 8);
-  }
-
   let paths = "";
   for (let r = 0; r < size; r++) {
     for (let c = 0; c < size; c++) {
       if (matrix[r][c]) {
         const x = (c + border) * boxSize;
         const y = (r + border) * boxSize;
-        if (inFinder(r, c)) {
-          // Sharp solid square for finders (critical for 100% camera alignment)
-          paths += `<rect x="${x}" y="${y}" width="${boxSize}" height="${boxSize}" fill="#020203" />`;
-        } else {
-          // Subtle polished styling for data modules
-          paths += `<rect x="${x}" y="${y}" width="${boxSize}" height="${boxSize}" fill="${color}" />`;
-        }
+        paths += `<rect x="${x}" y="${y}" width="${boxSize}" height="${boxSize}" fill="${color}" />`;
       }
     }
   }

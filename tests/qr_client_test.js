@@ -1,5 +1,5 @@
 import assert from 'assert';
-import { generateQrMatrix, renderQrDataUrl } from '../qr-client.js';
+import { generateQrMatrix, renderQrDataUrl, renderQrSvg } from '../qr-client.js';
 import { isSafeQrDestination } from '../qr-url.js';
 import { execSync } from 'child_process';
 import { readFileSync } from 'fs';
@@ -50,10 +50,17 @@ assert.strictEqual(isSafeQrDestination(`https://en.wikipedia.org/wiki/${'A'.repe
 console.log(" PASS: Destination validation rejects unsafe schemes, lookalikes, credentials, and overlength links.");
 
 const qrTech = readFileSync(new URL('../qr-tech.js', import.meta.url), 'utf8');
-assert.match(qrTech, /const QR_COLORS = \[.*?#d2ff5a.*?#ff70b7.*?#86d9ff/s, "QR-tech provides high-contrast FJ colors");
-assert.match(qrTech, /function nextQrColor\(\)[\s\S]*?previousQrColor = choices\[Math\.floor\(Math\.random\(\) \* choices\.length\)\]/,
-  "Each QR refresh picks a random color and avoids immediately repeating the last color");
-assert.match(qrTech, /renderQrSvg\(generateQrMatrix\(destination\.url, 4, "M"\), nextQrColor\(\), "#020203", 4\)/,
-  "The random accent is applied to the scannable QR itself with dark contrast and a four-module quiet zone");
+assert.match(qrTech, /generateQrMatrix\(destination, 6, "M"\)/, "QR-tech uses a higher-capacity standard QR with medium error correction");
+assert.match(qrTech, /renderQrSvg\(matrix, "#ffffff", "#020203", 4\)/, "QR-tech uses white modules and a four-module quiet zone on near-black");
+const rendered = renderQrSvg(generateQrMatrix(scanUrl, 6, 'M'), '#ffffff', '#020203', 4);
+assert.match(rendered, /shape-rendering="crispEdges"/);
+assert.match(rendered, /fill="#020203"/);
+assert.ok((rendered.match(/fill="#ffffff"/g) || []).length > 500, "Finder and data modules must both render white");
+assert.match(readFileSync(new URL('../qr.html', import.meta.url), 'utf8'), /class="qr-tech-page"[\s\S]*?<img[^>]+qr-tech-image/);
+const renderAndDecode = "import json,sys,xml.etree.ElementTree as ET,tempfile,os; from PIL import Image,ImageDraw; from qr_decoder import decode_qr_image; x=json.load(sys.stdin); root=ET.fromstring(x['svg']); w,h=map(float,root.attrib['viewBox'].split()[2:]); image=Image.new('RGB',(int(w),int(h)),(2,2,3)); draw=ImageDraw.Draw(image); ns={'s':'http://www.w3.org/2000/svg'}; [draw.rectangle((float(r.attrib['x']),float(r.attrib['y']),float(r.attrib['x'])+float(r.attrib['width'])-1,float(r.attrib['y'])+float(r.attrib['height'])-1),fill=r.attrib['fill']) for r in root.findall('s:rect',ns) if 'x' in r.attrib]; image=image.resize((x['size'],x['size']),Image.Resampling.NEAREST); f=tempfile.NamedTemporaryFile(suffix='.png',delete=False); f.close(); image.save(f.name); print(json.dumps(decode_qr_image(f.name,version=6,ec_level='M'))); os.unlink(f.name)";
+const scans = [420, 330, 220].map(size => JSON.parse(execSync(`python -c "${renderAndDecode}"`, {
+  input: JSON.stringify({ svg: rendered, size })
+}).toString()));
+assert.deepStrictEqual(scans, [scanUrl, scanUrl, scanUrl], "Independent image decoding must match the exact payload at desktop and mobile display sizes");
 
 console.log("=== QR CLIENT TEST COMPLETE ===\n");

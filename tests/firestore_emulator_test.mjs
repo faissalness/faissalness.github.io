@@ -27,14 +27,24 @@ try {
   const bob = environment.authenticatedContext('bob', { email_verified: true }).firestore();
   const unverified = environment.authenticatedContext('unverified', { email_verified: false }).firestore();
   const admin = environment.authenticatedContext('admin-a', { email_verified: true }).firestore();
-  const owner = environment.authenticatedContext('hDbzbNTC7pOuU2UFCjFksopbgaG3').firestore();
+  const owner = environment.authenticatedContext('hDbzbNTC7pOuU2UFCjFksopbgaG3', { email_verified: true }).firestore();
+  const suffixOnly = environment.authenticatedContext('person-ending-FJ', {
+    email: 'personfj@example.com', email_verified: true
+  }).firestore();
+  const eligibleButRevoked = environment.authenticatedContext('revoked-ending-fj', {
+    email: 'revokedfj@example.com', email_verified: true
+  }).firestore();
   const anonymous = environment.unauthenticatedContext().firestore();
   await environment.withSecurityRulesDisabled(async context => {
     await setDoc(doc(context.firestore(), 'applicationPermissions', 'alice'), { pipStatus: 'active', notesStatus: 'active', updatedAt: serverTimestamp() });
+    await setDoc(doc(context.firestore(), 'applicationPermissions', 'revoked-ending-fj'), { pipStatus: 'revoked', notesStatus: 'revoked' });
   });
   const notePath = (db, uid, id) => doc(db, 'yourNotes', uid, 'notes', id);
   const note = { title: 'Private', content: 'Alice only', createdAt: serverTimestamp(), updatedAt: serverTimestamp() };
 
+  await check('Owner UID has its trusted Notes permission without a mirror record', setDoc(notePath(owner, 'hDbzbNTC7pOuU2UFCjFksopbgaG3', 'owner-no-mirror'), note), assertSucceeds);
+  await check('Email suffix alone cannot authorize an account without owner permission', setDoc(notePath(suffixOnly, 'person-ending-FJ', 'suffix-only'), note), assertFails);
+  await check('Explicit revocation denies an account even when its email ends in fj', setDoc(notePath(eligibleButRevoked, 'revoked-ending-fj', 'revoked'), note), assertFails);
   await check('Verified account creates its own note', setDoc(notePath(alice, 'alice', 'one'), note), assertSucceeds);
   await check('Verified account reads its own note', getDoc(notePath(alice, 'alice', 'one')), assertSucceeds);
   await check('Other account cannot read the note by guessed ID', getDoc(notePath(bob, 'alice', 'one')), assertFails);
@@ -109,8 +119,8 @@ try {
   await check('User can remove the lifecycle record after deletion becomes due', deleteDoc(accountPath), assertSucceeds);
   await check('Admin cannot create owner authorization records', setDoc(doc(admin, 'admins', 'admin-b'), { active: true }), assertFails);
 
-  console.log(`FIRESTORE EMULATOR: ${passed}/30 passed`);
-  assert.equal(passed, 30);
+  console.log(`FIRESTORE EMULATOR: ${passed}/33 passed`);
+  assert.equal(passed, 33);
 } finally {
   await environment.cleanup();
 }

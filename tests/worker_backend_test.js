@@ -45,6 +45,9 @@ function makeClaims(overrides = {}) {
 }
 
 const validOwnerToken = makeTestJwt(makeClaims());
+const verifiedOwnerToken = makeTestJwt(makeClaims({
+  email: "faissalness@gmail.com", email_verified: true, name: "FJ owner"
+}));
 
 const invalidAudToken = makeTestJwt({
   ...makeClaims({ aud: "wrong-project-id" })
@@ -75,8 +78,80 @@ const userToken = makeTestJwt({
   };
   const workerModule = await import('../backend/worker.js');
   const implementation = workerModule.default;
-  const env = { DB: new FakeD1(), PAL_LOOKUP_SECRET: "test-only-hmac-secret-with-at-least-32-characters" };
+  const testDb = new FakeD1();
+  const env = { DB: testDb, PAL_LOOKUP_SECRET: "test-only-hmac-secret-with-at-least-32-characters" };
   const worker = { fetch: (request, _env, ctx) => implementation.fetch(request, env, ctx) };
+
+  const photoDb = new FakeD1();
+  const photoEnv = { DB: photoDb, PAL_LOOKUP_SECRET: env.PAL_LOOKUP_SECRET };
+  const photoWorker = { fetch: (request, _env, ctx) => implementation.fetch(request, photoEnv, ctx) };
+  photoDb.users.set(OWNER_UID, { uid: OWNER_UID, status: "scheduled", pipStatus: "revoked", notesStatus: "revoked", deletionAt: Date.now() });
+  const ownerRegistration = await photoWorker.fetch(new Request("https://api.local/api/users/register", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${verifiedOwnerToken}`, "Content-Type": "application/json" },
+    body: "{}"
+  }), {}, {});
+  assert.strictEqual(ownerRegistration.status, 200);
+  const ownerRegistrationResult = await ownerRegistration.json();
+  assert.strictEqual(ownerRegistrationResult.status, "active", "The trusted owner identity receives active PIP status");
+  assert.strictEqual(ownerRegistrationResult.pipStatus, "active");
+  assert.strictEqual(ownerRegistrationResult.notesStatus, "active", "Owner Notes access must not depend on a missing Firestore permission mirror");
+
+  const suffixDb = new FakeD1();
+  const suffixEnv = { DB: suffixDb, PAL_LOOKUP_SECRET: env.PAL_LOOKUP_SECRET };
+  const suffixWorker = { fetch: (request, _env, ctx) => implementation.fetch(request, suffixEnv, ctx) };
+  const suffixToken = makeTestJwt(makeClaims({
+    sub: "email_suffix_user", email: "ordinaryfj@example.com", email_verified: true, name: "Suffix User"
+  }));
+  const suffixRegistration = await suffixWorker.fetch(new Request("https://api.local/api/users/register", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${suffixToken}`, "Content-Type": "application/json" },
+    body: "{}"
+  }), {}, {});
+  assert.strictEqual(suffixRegistration.status, 200);
+  const suffixRegistrationResult = await suffixRegistration.json();
+  assert.strictEqual(suffixRegistrationResult.status, "pending", "An email suffix cannot approve a new account");
+  assert.strictEqual(suffixRegistrationResult.pipStatus, "pending");
+  assert.strictEqual(suffixRegistrationResult.notesStatus, "pending");
+  assert.strictEqual(suffixRegistrationResult.eligible, false);
+
+  photoDb.users.set("regular_user_123", { uid: "regular_user_123", status: "active", pipStatus: "active", notesStatus: "active" });
+  const verifiedUserToken = makeTestJwt(makeClaims({
+    sub: "regular_user_123", email: "friend@example.com", email_verified: true, name: "Friend"
+  }));
+  const pngBytes = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAE0lEQVR4nGP8//8/AwMDEwMYAAAkBgMBXaJOiAAAAABJRU5ErkJggg==", "base64");
+  const photoUpload = await photoWorker.fetch(new Request(`https://api.local/api/profiles/${OWNER_UID}/photo`, {
+    method: "POST", headers: { Authorization: `Bearer ${verifiedOwnerToken}`, "Content-Type": "image/png" }, body: pngBytes
+  }), {}, {});
+  assert.strictEqual(photoUpload.status, 200, "An active user may store a valid own profile photo");
+  const otherPhoto = await photoWorker.fetch(new Request(`https://api.local/api/profiles/${OWNER_UID}/photo`, {
+    headers: { Authorization: `Bearer ${verifiedUserToken}` }
+  }), {}, {});
+  assert.strictEqual(otherPhoto.status, 200, "Another active user may view a discoverable profile photo");
+  assert.strictEqual(otherPhoto.headers.get("Content-Type"), "image/png");
+  assert.deepStrictEqual(Buffer.from(await otherPhoto.arrayBuffer()), pngBytes, "Stored profile photos remain byte-identical when retrieved");
+  const changedOtherPhoto = await photoWorker.fetch(new Request("https://api.local/api/profiles/regular_user_123/photo", {
+    method: "POST", headers: { Authorization: `Bearer ${verifiedOwnerToken}`, "Content-Type": "image/png" }, body: pngBytes
+  }), {}, {});
+  assert.strictEqual(changedOtherPhoto.status, 403, "Users cannot replace another user's profile photo");
+  const spoofedPhoto = await photoWorker.fetch(new Request("https://api.local/api/profiles/regular_user_123/photo", {
+    method: "POST", headers: { Authorization: `Bearer ${verifiedUserToken}`, "Content-Type": "image/png" }, body: "not an image"
+  }), {}, {});
+  assert.strictEqual(spoofedPhoto.status, 400, "The Worker rejects spoofed image MIME types");
+  const brokenPng = Buffer.from(pngBytes);
+  brokenPng[29] ^= 0xff;
+  const corruptPhoto = await photoWorker.fetch(new Request(`https://api.local/api/profiles/${OWNER_UID}/photo`, {
+    method: "POST", headers: { Authorization: `Bearer ${verifiedOwnerToken}`, "Content-Type": "image/png" }, body: brokenPng
+  }), {}, {});
+  assert.strictEqual(corruptPhoto.status, 400, "The Worker rejects PNGs with invalid chunk checksums");
+  const removePhoto = await photoWorker.fetch(new Request(`https://api.local/api/profiles/${OWNER_UID}/photo`, {
+    method: "DELETE", headers: { Authorization: `Bearer ${verifiedOwnerToken}` }
+  }), {}, {});
+  assert.strictEqual(removePhoto.status, 204, "A user can remove their own photo");
+  const photoAfterRemoval = await photoWorker.fetch(new Request(`https://api.local/api/profiles/${OWNER_UID}/photo`, {
+    headers: { Authorization: `Bearer ${verifiedUserToken}` }
+  }), {}, {});
+  assert.strictEqual(photoAfterRemoval.status, 404, "Removed photos are no longer available");
 
   const missingBinding = await implementation.fetch(new Request("https://api.local/api/notes/verify", {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: "ignored" })
@@ -270,6 +345,8 @@ const userToken = makeTestJwt({
 
   assert.strictEqual((await authed(ownerAppToken, "/api/users/register", "POST", {})).status, 200);
   assert.strictEqual((await authed(palAppToken, "/api/users/register", "POST", {})).status, 200);
+  assert.strictEqual((await authed(ownerAppToken, "/api/admin/permissions", "POST", { uid: "regular_user_123", action: "approve" })).status, 200,
+    "An authenticated owner can grant application access to an existing account");
   const countBefore = await (await worker.fetch(new Request("https://api.local/api/users/count"), {}, {})).json();
   assert.strictEqual(countBefore.count, 2, "Public count contains verified unique accounts only");
   const unknownInvite = await authed(ownerAppToken, "/api/pals/invite", "POST", { email: "not-a-member@example.com" });

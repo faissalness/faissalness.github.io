@@ -1,6 +1,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
-import { createUserWithEmailAndPassword, EmailAuthProvider, getAuth, onAuthStateChanged, reauthenticateWithCredential, sendEmailVerification, sendPasswordResetEmail, signInWithEmailAndPassword, signOut, updateProfile } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
-import { addDoc, collection, deleteDoc, doc, documentId, getDoc, getDocs, getFirestore, limit, onSnapshot, orderBy, query, serverTimestamp, setDoc, startAfter, Timestamp, updateDoc, writeBatch } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+import { connectAuthEmulator, createUserWithEmailAndPassword, EmailAuthProvider, getAuth, onAuthStateChanged, reauthenticateWithCredential, sendEmailVerification, sendPasswordResetEmail, signInWithEmailAndPassword, signOut, updateProfile } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+import { addDoc, collection, connectFirestoreEmulator, deleteDoc, doc, documentId, getDoc, getDocs, getFirestore, limit, onSnapshot, orderBy, query, serverTimestamp, setDoc, startAfter, Timestamp, updateDoc, writeBatch } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 import { firebaseConfig } from "./firebase-config.js";
 import { decryptNotePayload, encryptNotePayload } from "./note-crypto.mjs";
 
@@ -8,8 +8,14 @@ const $ = selector => document.querySelector(selector);
 const app = initializeApp(firebaseConfig, "FJYourNotes");
 const auth = getAuth(app);
 const db = getFirestore(app);
+if (location.hostname === "127.0.0.1") {
+  connectAuthEmulator(auth, "http://127.0.0.1:9099", { disableWarnings: true });
+  connectFirestoreEmulator(db, "127.0.0.1", 8080);
+}
 const API = "https://fj-api.jimyass.workers.dev";
-const AUTH_ACTION_URL = "https://faissalness.github.io/pip/";
+const AUTH_ACTION_URL = location.hostname === "127.0.0.1"
+  ? `${location.origin}/pip/`
+  : "https://faissalness.github.io/pip/";
 let activeUser = null;
 let selectedId = null;
 let unsubscribe = null;
@@ -64,6 +70,77 @@ function addTextNode(parent, text, className) {
   return node;
 }
 
+function avatarInitials(name) {
+  const initials = String(name || "PIP").trim().split(/\s+/).slice(0, 2).map(part => part[0] || "");
+  return initials.join("").toUpperCase() || "P";
+}
+
+function createProfileAvatar(uid, name, large = false) {
+  const avatar = document.createElement("span");
+  avatar.className = `pip-avatar${large ? " pip-avatar-large" : ""}`;
+  avatar.setAttribute("role", "img");
+  avatar.setAttribute("aria-label", `${name || "PIP user"} profile photo`);
+  const fallback = document.createElement("span");
+  fallback.className = "pip-avatar-fallback";
+  fallback.textContent = avatarInitials(name);
+  avatar.append(fallback);
+  if (uid && activeUser) {
+    const image = document.createElement("img");
+    image.alt = "";
+    image.hidden = true;
+    image.onload = () => {
+      image.hidden = false;
+      URL.revokeObjectURL(image.dataset.photoUrl);
+      fallback.hidden = true;
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(image.dataset.photoUrl);
+      image.remove();
+    };
+    avatar.append(image);
+    activeUser.getIdToken().then(token => fetch(
+      `${API}/api/profiles/${encodeURIComponent(uid)}/photo`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    )).then(async response => {
+      if (response.status === 404) return null;
+      if (!response.ok) throw new Error("Profile photo unavailable");
+      return response.blob();
+    }).then(blob => {
+      if (!blob || !image.isConnected) return;
+      const photoUrl = URL.createObjectURL(blob);
+      image.dataset.photoUrl = photoUrl;
+      image.src = photoUrl;
+    }).catch(() => image.remove());
+  }
+  return avatar;
+}
+
+function showOwnProfilePhoto(file = null) {
+  const avatar = $("#pip-own-avatar");
+  if (!avatar || !activeUser) return;
+  avatar.replaceChildren(createProfileAvatar(activeUser.uid, activeUser.displayName, true));
+  if (file) {
+    const image = document.createElement("img");
+    image.alt = "";
+    const previewUrl = URL.createObjectURL(file);
+    image.onload = () => URL.revokeObjectURL(previewUrl);
+    image.onerror = () => URL.revokeObjectURL(previewUrl);
+    image.src = previewUrl;
+    avatar.replaceChildren(image);
+    $("#pip-save-profile-photo").disabled = false;
+  } else {
+    $("#pip-save-profile-photo").disabled = true;
+  }
+}
+
+function addProfileNotification(parent, uid, name, message) {
+  const row = document.createElement("div");
+  row.className = "pip-profile-notification";
+  row.append(createProfileAvatar(uid, name));
+  addTextNode(row, message, "pip-note-row-title");
+  parent.append(row);
+}
+
 async function refreshPalExperience() {
   if (!activeUser) return;
   const [palResult, inviteResult] = await Promise.all([
@@ -84,6 +161,7 @@ async function refreshPalExperience() {
     row.type = "button";
     row.className = `pip-note-row${pal.uid === selectedPalUid ? " active" : ""}`;
     row.setAttribute("aria-label", `${pal.displayName || "Pal"}${pal.unread ? `, ${pal.unread} unread` : ""}`);
+    row.append(createProfileAvatar(pal.uid, pal.displayName));
     const label = document.createElement("span");
     label.className = "pip-note-row-title";
     label.textContent = pal.displayName || "PIP Pal";
@@ -113,6 +191,8 @@ async function refreshPalExperience() {
   for (const invitation of invitations) {
     const row = document.createElement("div");
     row.className = "pip-invitation-row";
+    const profileUid = invitation.direction === "received" ? invitation.inviterUid : invitation.recipientUid;
+    row.append(createProfileAvatar(profileUid, invitation.inviterName));
     addTextNode(row, invitation.status === "accepted"
       ? `${invitation.inviterName || "Your Pal"} accepted your invitation`
       : invitation.direction === "received" ? `Pal invite from ${invitation.inviterName || "a PIP user"}` : "Pal invitation sent", "pip-note-row-title");
@@ -135,8 +215,8 @@ async function refreshPalExperience() {
       }
     }
     invitesList.append(row);
-    if (invitation.direction === "received") addTextNode(notyList, `New Pal invitation from ${invitation.inviterName || "a PIP user"}.`, "pip-noty-item");
-    if (invitation.direction === "sent" && invitation.status === "accepted") addTextNode(notyList, `${invitation.inviterName || "Your Pal"} accepted your Pal invitation.`, "pip-noty-item");
+    if (invitation.direction === "received") addProfileNotification(notyList, invitation.inviterUid, invitation.inviterName, `New Pal invitation from ${invitation.inviterName || "a PIP user"}.`);
+    if (invitation.direction === "sent" && invitation.status === "accepted") addProfileNotification(notyList, invitation.recipientUid, invitation.inviterName, `${invitation.inviterName || "Your Pal"} accepted your Pal invitation.`);
   }
   if (unreadTotal) addTextNode(notyList, `${unreadTotal} unread Post It ${unreadTotal === 1 ? "note" : "notes"}.`, "pip-noty-item");
   if (!notyList.childElementCount) addTextNode(notyList, "You are all caught up.", "pip-empty");
@@ -190,6 +270,11 @@ async function refreshPostFeed() {
   for (const post of posts) {
     const article = document.createElement("article");
     article.className = "pip-noty-item";
+    const author = document.createElement("div");
+    author.className = "pip-profile-notification";
+    author.append(createProfileAvatar(post.authorUid, post.authorName));
+    addTextNode(author, post.authorName || "PIP user", "pip-note-row-title");
+    article.append(author);
     addTextNode(article, post.body, "pip-message-body");
     addTextNode(article, `${post.visibility === "friends" ? "Friends" : "Private"} · ${new Date(post.createdAt).toLocaleString()}`, "pip-note-row-date");
     if (post.authorUid === activeUser.uid) {
@@ -222,6 +307,60 @@ $("#pip-post-submit").addEventListener("click", async () => {
   finally { button.disabled = false; }
 });
 
+$("#pip-profile-photo").addEventListener("change", event => {
+  const file = event.currentTarget.files?.[0] || null;
+  const statusNode = $("#pip-profile-photo-status");
+  if (!file) return;
+  if (!["image/png", "image/jpeg", "image/webp"].includes(file.type) || file.size > 262144) {
+    event.currentTarget.value = "";
+    statusNode.textContent = "Choose a PNG, JPEG, or WebP image no larger than 256 KB.";
+    return;
+  }
+  showOwnProfilePhoto(file);
+  statusNode.textContent = "Preview ready. Save to publish your photo.";
+});
+
+$("#pip-save-profile-photo").addEventListener("click", async event => {
+  const file = $("#pip-profile-photo").files?.[0];
+  if (!activeUser || !file) return;
+  const button = event.currentTarget;
+  button.disabled = true;
+  try {
+    const token = await activeUser.getIdToken();
+    const response = await fetch(`${API}/api/profiles/${encodeURIComponent(activeUser.uid)}/photo`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": file.type },
+      body: file
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || "Profile photo upload failed");
+    $("#pip-profile-photo").value = "";
+    $("#pip-profile-photo-status").textContent = "Profile photo saved.";
+    showOwnProfilePhoto();
+  } catch (error) {
+    button.disabled = false;
+    $("#pip-profile-photo-status").textContent = error.message || "Profile photo upload failed.";
+  }
+});
+
+$("#pip-remove-profile-photo").addEventListener("click", async event => {
+  if (!activeUser) return;
+  const button = event.currentTarget;
+  button.disabled = true;
+  try {
+    const token = await activeUser.getIdToken();
+    const response = await fetch(`${API}/api/profiles/${encodeURIComponent(activeUser.uid)}/photo`, {
+      method: "DELETE", headers: { Authorization: `Bearer ${token}` }
+    });
+    if (!response.ok && response.status !== 404) throw new Error("Profile photo could not be removed.");
+    $("#pip-profile-photo").value = "";
+    $("#pip-profile-photo-status").textContent = "Profile photo removed.";
+    showOwnProfilePhoto();
+  } catch (error) {
+    $("#pip-profile-photo-status").textContent = error.message || "Profile photo could not be removed.";
+  } finally { button.disabled = false; }
+});
+
 $("#pip-profile-search").addEventListener("submit", async event => {
   event.preventDefault();
   const query = $("#pip-profile-query").value.trim();
@@ -234,6 +373,7 @@ $("#pip-profile-search").addEventListener("submit", async event => {
       const row = document.createElement("button");
       row.type = "button";
       row.className = "pip-note-row";
+      row.append(createProfileAvatar(profile.uid, profile.displayName));
       addTextNode(row, profile.displayName || "PIP profile", "pip-note-row-title");
       row.addEventListener("click", async () => {
         status(`${profile.displayName || "Profile"} selected. Ask for their PIP email to send an invitation.`, "info");
@@ -608,11 +748,11 @@ $("#pip-login-form").addEventListener("submit", async event => {
   const button = event.currentTarget.querySelector('button[type="submit"]');
   button.disabled = true;
   try {
-    const email = $("#pip-login-email").value.trim().toLower();
+    const email = $("#pip-login-email").value.trim().toLowerCase();
     await signInWithEmailAndPassword(auth, email, $("#pip-login-password").value);
     rememberPipEmail(email);
   }
-  catch { status("Sign-in failed. Check your email and password.", "error"); }
+  catch { status("Sign-in failed. Check your email and password, and confirm the account is verified.", "error"); }
   finally { button.disabled = false; }
 });
 
@@ -656,6 +796,9 @@ $("#pip-returning-form").addEventListener("submit", async event => {
 $("#pip-switch-account").addEventListener("click", () => {
   clearRememberedPipEmail();
   $("#pip-returning").hidden = true;
+  $("#pip-auth").classList.remove("pip-returning-mode");
+  $("#pip-login-form").hidden = false;
+  $("#pip-register-form").hidden = false;
   $("#pip-auth").hidden = false;
   $("#pip-login-email").value = "";
   $("#pip-login-password").value = "";
@@ -724,8 +867,17 @@ async function showPrivateNotes(user) {
   emailVerificationUser = null;
   if (!user) {
     activeUser = null;
-    $("#pip-auth").hidden = false;
     $("#pip-notes").hidden = true;
+    clearInterval(palRefreshTimer);
+    palRefreshTimer = null;
+    unsubscribe?.();
+    unsubscribe = null;
+    notes = [];
+    selectedId = null;
+    protectedNoteUnlocked = false;
+    $("#pip-note-password").value = "";
+    $("#pip-note-content").value = "";
+    $("#pip-note-title").value = "";
     return;
   }
   try {
@@ -733,6 +885,7 @@ async function showPrivateNotes(user) {
     if (registration.status !== "active" || registration.pipStatus !== "active") {
       activeUser = null;
       $("#pip-auth").hidden = true;
+      $("#pip-auth").classList.remove("pip-returning-mode");
       $("#pip-notes").hidden = true;
       status("Your PIP and Your Notes access is pending owner approval.", "info");
       return;
@@ -750,6 +903,7 @@ async function showPrivateNotes(user) {
   $("#pip-notes").hidden = !user;
   $("#pip-status").hidden = true;
   if (user) {
+    showOwnProfilePhoto();
     $("#pip-welcome").textContent = user.displayName ? `${user.displayName}'s Notes.` : "Your Notes.";
     syncAccountLifecycle(user).catch(() => status("Could not load account status. Notes remain protected until it can be checked.", "error"));
     palApi("/api/users/register", { method: "POST", body: "{}" })
@@ -786,13 +940,19 @@ onAuthStateChanged(auth, user => {
   if (!user) {
     const remembered = rememberedPipEmail();
     if (remembered) {
-      $("#pip-auth").hidden = true;
+      $("#pip-auth").hidden = false;
+      $("#pip-auth").classList.add("pip-returning-mode");
       $("#pip-returning").hidden = false;
+      $("#pip-login-form").hidden = true;
+      $("#pip-register-form").hidden = true;
       $("#pip-returning-email").textContent = remembered;
       $("#pip-returning-password").value = "";
       setTimeout(() => $("#pip-returning-password").focus(), 50);
     } else {
+      $("#pip-auth").classList.remove("pip-returning-mode");
       $("#pip-returning").hidden = true;
+      $("#pip-login-form").hidden = false;
+      $("#pip-register-form").hidden = false;
       $("#pip-auth").hidden = false;
     }
     showPrivateNotes(null);

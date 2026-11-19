@@ -1,10 +1,12 @@
 """
 Add decode_qr_image to qr_engine.py to decode directly from a saved PNG image file.
 """
-from PIL import Image
+from PIL import Image, ImageOps
 
 def decode_qr_image(image_path, version=4, ec_level='M'):
     img = Image.open(image_path).convert('RGBA')
+    if sum(img.getpixel((0, 0))[:3]) < 384:
+        img = ImageOps.invert(img.convert('RGB')).convert('RGBA')
     width, height = img.size
     size = version * 4 + 17  # 33 for version 4
     

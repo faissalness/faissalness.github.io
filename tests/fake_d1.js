@@ -6,6 +6,7 @@ class FakeD1 {
     this.sessions = new Map();
     this.invitations = new Map();
     this.users = new Map();
+    this.profilePhotos = new Map();
     this.palInvites = new Map();
     this.pals = new Set();
     this.messages = new Map();
@@ -22,6 +23,18 @@ class FakeD1 {
         if (sql.includes("COUNT(*) AS count FROM pip_messages")) return { count: [...db.messages.values()].filter(item => item.senderUid === args[0] && item.createdAt > args[1]).length };
         if (sql.includes("SELECT status, deletion_at AS deletionAt FROM registered_users")) {
           const user = db.users.get(args[0]); return user ? { status: user.status, deletionAt: user.deletionAt } : null;
+        }
+        if (sql.includes("SELECT status, pip_status AS pipStatus, notes_status AS notesStatus FROM registered_users")) {
+          const user = db.users.get(args[0]);
+          return user ? { status: user.status, pipStatus: user.pipStatus || "pending", notesStatus: user.notesStatus || "pending" } : null;
+        }
+        if (sql.includes("SELECT pip_status AS pipStatus, notes_status AS notesStatus FROM registered_users")) {
+          const user = db.users.get(args[0]);
+          return user ? { pipStatus: user.pipStatus || "pending", notesStatus: user.notesStatus || "pending" } : null;
+        }
+        if (sql.includes("FROM profile_photos WHERE uid = ?")) {
+          const photo = db.profilePhotos.get(args[0]);
+          return photo ? { mimeType: photo.mimeType, imageData: photo.imageData } : null;
         }
         if (sql.includes("SELECT status FROM registered_users")) return db.users.get(args[0]) ? { status: db.users.get(args[0]).status } : null;
         if (sql.includes("SELECT id, inviter_uid AS inviterUid FROM pal_invitations")) {
@@ -59,9 +72,19 @@ class FakeD1 {
       },
       async run() {
         if (sql.includes("INSERT OR IGNORE INTO registered_users")) {
-          if (!db.users.has(args[0])) db.users.set(args[0], { uid: args[0], registeredAt: args[1], displayName: args[2], status: "active", deletionAt: null });
+          if (!db.users.has(args[0])) db.users.set(args[0], { uid: args[0], registeredAt: args[1], displayName: args[2], status: args[4], pipStatus: "pending", notesStatus: "pending", deletionAt: null });
         } else if (sql.includes("UPDATE registered_users SET display_name")) {
           const user = db.users.get(args[1]); if (user) user.displayName = args[0];
+        } else if (sql.includes("UPDATE registered_users SET status = 'active', pip_status = 'active'")) {
+          const user = db.users.get(args[0]);
+          if (user) { user.status = "active"; user.pipStatus = "active"; user.notesStatus = "active"; user.deletionAt = null; }
+        } else if (sql.includes("UPDATE registered_users SET pip_status = ?, notes_status = ?")) {
+          const user = db.users.get(args[2]);
+          if (user) { user.pipStatus = args[0]; user.notesStatus = args[1]; }
+        } else if (sql.includes("INSERT INTO profile_photos")) {
+          db.profilePhotos.set(args[0], { mimeType: args[1], imageData: args[2], size: args[3], updatedAt: args[4] });
+        } else if (sql.includes("DELETE FROM profile_photos")) {
+          db.profilePhotos.delete(args[0]);
         } else if (sql.includes("UPDATE registered_users SET status = 'scheduled'")) {
           const user = db.users.get(args[1]); if (user && user.status === "active") { user.status = "scheduled"; user.deletionAt = args[0]; }
         } else if (sql.includes("INSERT INTO pal_invitations")) {
