@@ -49,6 +49,7 @@ Updated: 2026-11-19 (Europe/Stockholm)
 - GitHub Pages is configured for GitHub Actions and currently published through `ba7c957`. GitHub Actions run `44440065298` succeeded.
 - Refreshed Cloudflare authentication was available. Wrangler 4.164.0 created D1 database `fj-api-state` (database ID `3f4828b7-8c5f-4725-b801-3d2bea416312`), applied its migration remotely, and deployed `fj-api` successfully.
 - Wrangler logging was redirected into the writable task work folder; no credential contents were printed or saved in the repository.
+- After commit `4b8683f`, `git push origin main` failed inside this restricted shell: Git Credential Manager could not start its MSYS child (`NtCreateDirectoryObject ... 0xC0000022`), then Git had no terminal username. No remote history changed. The native Git Credential Manager window is waiting at “Connect to GitHub”; computer-use policy prevents me from operating that authentication dialog. Run `cd "C:\Users\faiss\OneDrive\Desktop\FJ-website"; git push origin main` in a normal PowerShell window. Expected: commit `4b8683f` reaches `origin/main` and GitHub Actions starts the allowlisted Pages deployment.
 
 ### Continuation on 2026-11-18
 
@@ -58,6 +59,13 @@ Updated: 2026-11-19 (Europe/Stockholm)
 - That historical push attempt failed before authentication; the user subsequently refreshed GitHub auth and pushed the work. Current remote is synchronized at `ba7c957`.
 - Firebase rules were released successfully (CLI printed `Deploy complete!`); the process then exited 1 from the local Firebase CLI update-check/config-store failure. Live unauthenticated REST checks return 403 for protected collections.
 - Cloudflare OAuth remains expired. `wrangler whoami` previously reported the expired token, so the current local Worker changes have not been deployed.
+
+### Continuation on 2026-11-19
+
+- Committed the D1-backed Worker, migration files, PIP/Post It Pal UI, public aggregate counter and regression tests as `4b8683f` (parent `ba7c957`). Existing untracked `.firebaserc`, task text, backup files and `.wrangler` directory were not staged.
+- `git push origin main` failed before authentication because Git Credential Manager's process could not start in the restricted shell. `origin/main` remains `ba7c957`; commit `4b8683f` is local and Pages has not deployed the new frontend.
+- The actual Worker and D1 migrations are already deployed at `https://fj-api.jimyass.workers.dev`; latest Worker version is `e71a7ccb-9774-467b-b5f0-d3bf1b7af10c`.
+- Master test suite: 194/194 passed. Firestore emulator: 27/27 passed; Firebase CLI emitted an update/config store error after test completion.
 
 ## Next operations
 
