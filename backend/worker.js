@@ -241,8 +241,11 @@ export default {
           .bind(identity.sub, Date.now(), String(identity.name || "").slice(0, 80), emailDigest, status).run();
         await env.DB.prepare("UPDATE registered_users SET display_name = ?, email_digest = ? WHERE uid = ?")
           .bind(String(identity.name || "").slice(0, 80), emailDigest, identity.sub).run();
+        const existing = await env.DB.prepare("SELECT status, pip_status AS pipStatus, notes_status AS notesStatus FROM registered_users WHERE uid = ?").bind(identity.sub).first();
+        const pipStatus = (existing?.pipStatus === "active" || existing?.status === "active" || eligible) ? "active" : "pending";
+        const notesStatus = (existing?.notesStatus === "active" || existing?.status === "active" || eligible) ? "active" : "pending";
         await env.DB.prepare("UPDATE registered_users SET pip_status = ?, notes_status = ? WHERE uid = ?")
-          .bind(eligible ? "active" : "pending", eligible ? "active" : "pending", identity.sub).run();
+          .bind(pipStatus, notesStatus, identity.sub).run();
         const account = await env.DB.prepare("SELECT status, deletion_at AS deletionAt FROM registered_users WHERE uid = ?").bind(identity.sub).first();
         const permissions = await env.DB.prepare("SELECT pip_status AS pipStatus, notes_status AS notesStatus FROM registered_users WHERE uid = ?").bind(identity.sub).first();
         return new Response(JSON.stringify({ success: true, status: account?.status || status, eligible, pipStatus: permissions?.pipStatus || "pending", notesStatus: permissions?.notesStatus || "pending" }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -420,6 +423,62 @@ export default {
         return new Response(JSON.stringify({ success: true }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       } catch (_) {
         return new Response(JSON.stringify({ error: "Invitation response failed" }), { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+    }
+
+    if (url.pathname === "/api/posts" && ["GET", "POST"].includes(request.method)) {
+      try {
+        const identity = await readIdentity();
+        if (!identity || identity.email_verified !== true) return new Response(JSON.stringify({ error: "Verified sign-in required" }), { status: identity ? 403 : 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        if (!await accountIsActive(identity.sub)) return new Response(JSON.stringify({ error: "Active PIP account required" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        if (request.method === "POST") {
+          const body = await request.json();
+          const text = String(body.body || "").trim();
+          const visibility = body.visibility === "friends" ? "friends" : "private";
+          if (!text || text.length > 5000) return new Response(JSON.stringify({ error: "Posts must be 1–5000 characters" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+          const id = bufferToHex(crypto.getRandomValues(new Uint8Array(16)));
+          const now = Date.now();
+          await env.DB.prepare("INSERT INTO social_posts (id, author_uid, body, visibility, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)")
+            .bind(id, identity.sub, text, visibility, now, now).run();
+          return new Response(JSON.stringify({ success: true, id }), { status: 201, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+        const posts = await env.DB.prepare(`SELECT p.id, p.author_uid AS authorUid, p.body, p.visibility, p.created_at AS createdAt
+          FROM social_posts p
+          WHERE p.deletion_status = 'active'
+            AND (p.author_uid = ? OR (p.visibility = 'friends' AND EXISTS (
+              SELECT 1 FROM pals q
+              WHERE (q.uid_low = ? AND q.uid_high = p.author_uid)
+                 OR (q.uid_high = ? AND q.uid_low = p.author_uid)
+            )))
+          ORDER BY p.created_at DESC LIMIT 100`)
+          .bind(identity.sub, identity.sub, identity.sub).all();
+        return new Response(JSON.stringify({ posts: posts.results || [] }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      } catch (_) {
+        return new Response(JSON.stringify({ error: "Social posts unavailable" }), { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+    }
+
+    const postMutationMatch = /^\/api\/posts\/([0-9a-f]{32})$/.exec(url.pathname);
+    if (postMutationMatch && ["POST", "DELETE"].includes(request.method)) {
+      try {
+        const identity = await readIdentity();
+        if (!identity || identity.email_verified !== true) return new Response(JSON.stringify({ error: "Verified sign-in required" }), { status: identity ? 403 : 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        const postId = postMutationMatch[1];
+        const body = request.method === "POST" ? await request.json() : {};
+        if (request.method === "DELETE" || body.action === "trash") {
+          await env.DB.prepare("UPDATE social_posts SET deletion_status = 'trashed', deleted_at = ? WHERE id = ? AND author_uid = ?")
+            .bind(Date.now(), postId, identity.sub).run();
+        } else if (body.action === "restore") {
+          await env.DB.prepare("UPDATE social_posts SET deletion_status = 'active', deleted_at = NULL, updated_at = ? WHERE id = ? AND author_uid = ?")
+            .bind(Date.now(), postId, identity.sub).run();
+        } else if (body.action === "permanent") {
+          await env.DB.prepare("DELETE FROM social_posts WHERE id = ? AND author_uid = ?").bind(postId, identity.sub).run();
+        } else {
+          return new Response(JSON.stringify({ error: "Invalid post action" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+        return new Response(JSON.stringify({ success: true }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      } catch (_) {
+        return new Response(JSON.stringify({ error: "Social post update unavailable" }), { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
     }
 

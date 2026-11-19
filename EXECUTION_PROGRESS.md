@@ -42,6 +42,10 @@ Updated: 2026-11-19 (Europe/Stockholm)
 - PIP registration now creates standard unapproved Firestore profile and pending access-request documents.
 - D1 migration 0005 applied and Worker deployed as version `d6679817-a9ac-46cf-9aac-81cc29c8cd4b`.
 - Focused workflow, Worker and website audit suites pass.
+
+- Worker version `bf0ef511-b0b8-43d3-a693-0dba41e675c9` deployed with migration `0006_social_posts_trash.sql`.
+- Live unauthenticated `/api/posts` GET/POST probes return 401.
+- Live Playwright screenshots confirm dark desktop Meet and Gods gates, mobile PIP layout, and the Notes 03 neon-green gate.
 - A local run of the Pages allowlist assembly succeeded: 26 files, five clean route aliases, no Worker/source-map markers.
 - QR test independently decoded the JavaScript-generated QR matrix to the exact test URL and covers unsafe URL rejection.
 - PIP page was visually checked at 390px mobile width; navigation, sign-in and account creation cards fit the viewport.

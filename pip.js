@@ -161,8 +161,51 @@ async function openPalConversation(pal) {
 document.querySelectorAll("[data-pip-view]").forEach(button => button.addEventListener("click", () => {
   document.querySelectorAll("[data-pip-view]").forEach(item => item.classList.toggle("active", item === button));
   document.querySelectorAll(".pip-view").forEach(view => { view.hidden = view.id !== `pip-view-${button.dataset.pipView}`; });
+  if (button.dataset.pipView === "feed") refreshPostFeed().catch(() => status("Could not load the social feed.", "error"));
   if (button.dataset.pipView !== "notes") refreshPalExperience().catch(() => status("Post It Pal is temporarily unavailable. Try again.", "error"));
 }));
+
+async function refreshPostFeed() {
+  if (!activeUser) return;
+  const result = await palApi("/api/posts");
+  const feed = $("#pip-post-feed");
+  feed.replaceChildren();
+  const posts = result.posts || [];
+  if (!posts.length) addTextNode(feed, "No social posts yet.", "pip-empty");
+  for (const post of posts) {
+    const article = document.createElement("article");
+    article.className = "pip-noty-item";
+    addTextNode(article, post.body, "pip-message-body");
+    addTextNode(article, `${post.visibility === "friends" ? "Friends" : "Private"} · ${new Date(post.createdAt).toLocaleString()}`, "pip-note-row-date");
+    if (post.authorUid === activeUser.uid) {
+      const trash = document.createElement("button");
+      trash.type = "button";
+      trash.className = "text-button";
+      trash.textContent = "Move to Trash";
+      trash.addEventListener("click", async () => {
+        try {
+          await palApi(`/api/posts/${encodeURIComponent(post.id)}`, { method: "POST", body: JSON.stringify({ action: "trash" }) });
+          await refreshPostFeed();
+        } catch { status("Could not trash this post.", "error"); }
+      });
+      article.append(trash);
+    }
+    feed.append(article);
+  }
+}
+
+$("#pip-post-submit").addEventListener("click", async () => {
+  const body = $("#pip-post-body").value.trim();
+  if (!body) return;
+  const button = $("#pip-post-submit");
+  button.disabled = true;
+  try {
+    await palApi("/api/posts", { method: "POST", body: JSON.stringify({ body, visibility: $("#pip-post-visibility").value }) });
+    $("#pip-post-body").value = "";
+    await refreshPostFeed();
+  } catch (error) { status(error.message, "error"); }
+  finally { button.disabled = false; }
+});
 
 $("#pip-pal-invite-form").addEventListener("submit", async event => {
   event.preventDefault();

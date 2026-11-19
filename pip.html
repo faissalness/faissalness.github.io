@@ -66,6 +66,7 @@
       <div class="pip-heading"><div><p class="eyebrow">YOUR PRIVATE SPACE</p><h1 id="pip-welcome">Your Notes.</h1></div><button id="pip-sign-out" class="text-button" type="button">Sign out ↗</button></div>
       <nav class="pip-tabs" aria-label="Your Notes applications">
         <button type="button" class="pip-tab active" data-pip-view="notes">Notes</button>
+        <button type="button" class="pip-tab" data-pip-view="feed">Feed</button>
         <button type="button" class="pip-tab" data-pip-view="pals">Post It Pal</button>
         <button type="button" class="pip-tab" data-pip-view="noty">Noty <span id="pip-noty-count" hidden>0</span></button>
       </nav>
@@ -79,6 +80,16 @@
           <div class="pip-editor-footer"><span id="pip-save-status" class="save-indicator" role="status" aria-live="polite"></span><button class="primary-button compact-btn" id="pip-save-note" type="submit">Save note <span>↗</span></button></div>
         </form>
       </div>
+      </section>
+      <section id="pip-view-feed" class="pip-view" hidden>
+        <div class="pip-social-composer">
+          <label for="pip-post-body">Share a Post</label>
+          <textarea id="pip-post-body" maxlength="5000" placeholder="Write a post…" required></textarea>
+          <label for="pip-post-visibility">Visibility</label>
+          <select id="pip-post-visibility"><option value="private">Only me</option><option value="friends">Friends</option></select>
+          <button id="pip-post-submit" class="primary-button compact-btn" type="button">Publish <span>↗</span></button>
+        </div>
+        <div id="pip-post-feed" class="pip-noty-list" aria-live="polite"></div>
       </section>
       <section id="pip-view-pals" class="pip-view" hidden>
         <div class="pip-pal-grid">

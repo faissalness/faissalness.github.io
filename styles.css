@@ -91,6 +91,9 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:1px solid var(-
 .pip-pal-compose textarea{flex:1;min-height:72px;max-height:180px;resize:vertical;padding:10px;background:#050608;border:1px solid #303135;color:var(--paper);font:13px var(--sans)}
 .pip-pal-compose .compact-btn{margin:0;padding:0 14px;min-height:42px}
 .pip-noty-list{display:grid;gap:10px;max-width:760px}
+.pip-social-composer{max-width:760px;display:grid;gap:10px;margin-bottom:18px;padding:14px;border:1px solid #202124;background:#08090b}
+.pip-social-composer textarea{min-height:110px;resize:vertical;padding:12px;border:1px solid #303135;background:#050608;color:var(--paper)}
+.pip-social-composer select{height:38px;padding:0 10px;border:1px solid #303135;background:#050608;color:var(--paper)}
 .pip-noty-item{margin:0;padding:14px;border:1px solid #202124;background:#08090b;color:#d5d5d2;font-size:12px}
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 .pip-notes{margin:4vh 0 auto}

@@ -77,6 +77,9 @@ assert.ok(pipPage.includes('id="pip-returning"') && pipPage.includes('id="pip-re
 assert.ok(pipScript.includes('pipStatus') && fs.readFileSync(path.join(ROOT, 'backend', 'worker.js'), 'utf8').includes('/api/admin/permissions')
   && fs.readFileSync(path.join(ROOT, 'backend', 'worker.js'), 'utf8').includes('/api/admin/lookup'),
   'PIP and Your Notes access must be gated by trusted server-side application permissions');
+assert.ok(pipPage.includes('data-pip-view="feed"') && pipPage.includes('pip-post-visibility')
+  && pipScript.includes('/api/posts') && fs.readFileSync(path.join(ROOT, 'backend', 'worker.js'), 'utf8').includes('body.visibility === "friends"'),
+  'PIP must expose a private/friends social feed backed by authenticated visibility checks');
 const meetPage = fs.readFileSync(path.join(ROOT, 'meet.html'), 'utf8');
 const godsPage = fs.readFileSync(path.join(ROOT, 'gods.html'), 'utf8');
 assert.ok(meetPage.includes('class="meet-layout"') && meetPage.includes('class="object-core"')
