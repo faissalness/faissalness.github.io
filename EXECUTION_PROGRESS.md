@@ -14,6 +14,17 @@ Updated: 2026-11-19 (Europe/Stockholm)
 - Syntax checks passed for `app.js`, `notes.js`, `pip.js`, `qr-tech.js`, `qr-url.js`, and `backend/worker.js`.
 - `git diff --check` passed.
 
+### Authentication emulator verification — 2026-11-19
+
+- Status: COMPLETE AND VERIFIED for emulator workflows.
+- Master command: `powershell -NoProfile -ExecutionPolicy Bypass -File tests/run_emulator_tests.ps1`
+- Synthetic accounts: 3 independent browser/Auth identities.
+- Auth lifecycle: 18/18 emulator workflows passed, including verification/reset action-link capture, password reset, tamper rejection and reused-code rejection.
+- Firestore authorization: 30/30 emulator rules checks passed.
+- Playwright isolation: 1/1 test passed across separate browser contexts.
+- CI workflow: emulator test workflow was added; Playwright test dependency and environment propagation were corrected after a concrete missing-module failure.
+- Production Auth audit: project, CLI access and 4-account production inventory verified. Real production inbox delivery remains not tested without a controlled mailbox/test identity.
+
 ### Authentication emulator and production audit — 2026-11-19
 
 - Added fixed Auth emulator port 9099 and Firestore emulator port 8080 in `firebase.json`.

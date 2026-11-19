@@ -16,10 +16,10 @@ jobs:
         with:
           node-version: 20
       - name: Install emulator test dependencies
-        run: npm install --no-save --ignore-scripts --legacy-peer-deps firebase@11.10.0 @firebase/rules-unit-testing@4.0.1
+        run: npm install --no-save --ignore-scripts --legacy-peer-deps firebase@11.10.0 @firebase/rules-unit-testing@4.0.1 @playwright/test@1.65.1
       - name: Install Playwright browser
         run: npx --yes playwright@1.65.1 install --with-deps chromium
       - name: Start emulators and run synthetic Auth/Firestore tests
         env:
           FJ_TEST_DEPS: ${{ github.workspace }}
-        run: npx --yes firebase-tools@15.37.0 emulators:exec --only auth,firestore "node tests/auth_emulator_test.mjs && node tests/firestore_emulator_test.mjs && npx --yes playwright@1.65.1 test tests/browser_emulator.spec.js --reporter=line" --project demo-fj-website-384fd --export-on-exit /tmp/fj-emulator-test
+        run: npx --yes firebase-tools@15.37.0 emulators:exec --only auth,firestore "FJ_TEST_DEPS=$GITHUB_WORKSPACE node tests/auth_emulator_test.mjs && FJ_TEST_DEPS=$GITHUB_WORKSPACE node tests/firestore_emulator_test.mjs && npx playwright test tests/browser_emulator.spec.js --reporter=line" --project demo-fj-website-384fd --export-on-exit /tmp/fj-emulator-test
