@@ -277,6 +277,22 @@ export default {
       }
     }
 
+    if (url.pathname === "/api/profiles" && request.method === "GET") {
+      try {
+        const identity = await readIdentity();
+        if (!identity || identity.email_verified !== true) return new Response(JSON.stringify({ error: "Verified sign-in required" }), { status: identity ? 403 : 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        if (!await accountIsActive(identity.sub)) return new Response(JSON.stringify({ error: "Active PIP account required" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        const search = String(url.searchParams.get("q") || "").trim().slice(0, 80);
+        const result = await env.DB.prepare(`SELECT uid, display_name AS displayName FROM registered_users
+          WHERE status = 'active' AND uid != ? AND display_name != '' AND display_name LIKE ? COLLATE NOCASE
+          ORDER BY display_name COLLATE NOCASE LIMIT 25`)
+          .bind(identity.sub, `%${search}%`).all();
+        return new Response(JSON.stringify({ profiles: result.results || [] }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      } catch (_) {
+        return new Response(JSON.stringify({ error: "Profiles unavailable" }), { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+    }
+
     if (url.pathname === "/api/admin/lookup" && request.method === "POST") {
       try {
         const identity = await readIdentity();
@@ -479,6 +495,22 @@ export default {
         return new Response(JSON.stringify({ success: true }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       } catch (_) {
         return new Response(JSON.stringify({ error: "Social post update unavailable" }), { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+    }
+
+    const palRemovalMatch = /^\/api\/pals\/([A-Za-z0-9_-]{1,128})$/.exec(url.pathname);
+    if (palRemovalMatch && request.method === "DELETE") {
+      try {
+        const identity = await readIdentity();
+        if (!identity || identity.email_verified !== true) return new Response(JSON.stringify({ error: "Verified sign-in required" }), { status: identity ? 403 : 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        const pair = [identity.sub, palRemovalMatch[1]].sort();
+        await env.DB.batch([
+          env.DB.prepare("DELETE FROM pals WHERE uid_low = ? AND uid_high = ?").bind(pair[0], pair[1]),
+          env.DB.prepare("UPDATE pal_invitations SET status = 'declined' WHERE (inviter_uid = ? AND recipient_uid = ?) OR (inviter_uid = ? AND recipient_uid = ?)").bind(identity.sub, palRemovalMatch[1], palRemovalMatch[1], identity.sub)
+        ]);
+        return new Response(JSON.stringify({ success: true }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      } catch (_) {
+        return new Response(JSON.stringify({ error: "Friend removal unavailable" }), { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
     }
 

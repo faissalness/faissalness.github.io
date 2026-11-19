@@ -45,6 +45,8 @@ Updated: 2026-11-19 (Europe/Stockholm)
 
 - Worker version `bf0ef511-b0b8-43d3-a693-0dba41e675c9` deployed with migration `0006_social_posts_trash.sql`.
 - Live unauthenticated `/api/posts` GET/POST probes return 401.
+- Worker version `fee16cbb-1cc1-4e07-a05a-78fb5598702e` deployed with migration `0007_backfill_application_permissions.sql`.
+- Added privacy-safe `/api/profiles` lookup and authenticated `/api/pals/{uid}` removal routes.
 - Live Playwright screenshots confirm dark desktop Meet and Gods gates, mobile PIP layout, and the Notes 03 neon-green gate.
 - A local run of the Pages allowlist assembly succeeded: 26 files, five clean route aliases, no Worker/source-map markers.
 - QR test independently decoded the JavaScript-generated QR matrix to the exact test URL and covers unsafe URL rejection.

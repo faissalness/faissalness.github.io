@@ -92,6 +92,20 @@ async function refreshPalExperience() {
     unreadTotal += Number(pal.unread || 0);
     row.append(label, badge);
     row.addEventListener("click", () => openPalConversation(pal));
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "text-button";
+    remove.textContent = "Remove";
+    remove.addEventListener("click", async event => {
+      event.stopPropagation();
+      if (!confirm(`Remove ${pal.displayName || "this Pal"}?`)) return;
+      try {
+        await palApi(`/api/pals/${encodeURIComponent(pal.uid)}`, { method: "DELETE" });
+        await refreshPalExperience();
+        await refreshPostFeed();
+      } catch (error) { status(error.message, "error"); }
+    });
+    row.append(remove);
     palsList.append(row);
   }
   if (!invitations.length) addTextNode(invitesList, "No pending invitations.", "pip-empty");
@@ -205,6 +219,28 @@ $("#pip-post-submit").addEventListener("click", async () => {
     await refreshPostFeed();
   } catch (error) { status(error.message, "error"); }
   finally { button.disabled = false; }
+});
+
+$("#pip-profile-search").addEventListener("submit", async event => {
+  event.preventDefault();
+  const query = $("#pip-profile-query").value.trim();
+  const results = $("#pip-profile-results");
+  results.replaceChildren();
+  try {
+    const result = await palApi(`/api/profiles?q=${encodeURIComponent(query)}`);
+    if (!(result.profiles || []).length) addTextNode(results, "No profiles found.", "pip-empty");
+    for (const profile of result.profiles || []) {
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = "pip-note-row";
+      addTextNode(row, profile.displayName || "PIP profile", "pip-note-row-title");
+      row.addEventListener("click", async () => {
+        await palApi("/api/pals/invite", { method: "POST", body: JSON.stringify({ email: profile.uid }) });
+        status("Profile selected. Use the email invite if the profile lookup does not expose an address.", "info");
+      });
+      results.append(row);
+    }
+  } catch (error) { status(error.message, "error"); }
 });
 
 $("#pip-pal-invite-form").addEventListener("submit", async event => {
