@@ -79,7 +79,7 @@ async function refreshPalExperience() {
   let unreadTotal = 0;
   if (!pals.length) addTextNode(palsList, "No Pals yet.", "pip-empty");
   for (const pal of pals) {
-    const row = document.createElement("button");
+    const row = document.createElement("div");
     row.type = "button";
     row.className = `pip-note-row${pal.uid === selectedPalUid ? " active" : ""}`;
     row.setAttribute("aria-label", `${pal.displayName || "Pal"}${pal.unread ? `, ${pal.unread} unread` : ""}`);
@@ -235,8 +235,7 @@ $("#pip-profile-search").addEventListener("submit", async event => {
       row.className = "pip-note-row";
       addTextNode(row, profile.displayName || "PIP profile", "pip-note-row-title");
       row.addEventListener("click", async () => {
-        await palApi("/api/pals/invite", { method: "POST", body: JSON.stringify({ email: profile.uid }) });
-        status("Profile selected. Use the email invite if the profile lookup does not expose an address.", "info");
+        status(`${profile.displayName || "Profile"} selected. Ask for their PIP email to send an invitation.`, "info");
       });
       results.append(row);
     }
