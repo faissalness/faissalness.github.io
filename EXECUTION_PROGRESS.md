@@ -14,6 +14,17 @@ Updated: 2026-11-19 (Europe/Stockholm)
 - Syntax checks passed for `app.js`, `notes.js`, `pip.js`, `qr-tech.js`, `qr-url.js`, and `backend/worker.js`.
 - `git diff --check` passed.
 
+### Authentication emulator and production audit — 2026-11-19
+
+- Added fixed Auth emulator port 9099 and Firestore emulator port 8080 in `firebase.json`.
+- Added `tests/auth_emulator_test.mjs`: three synthetic accounts, independent sign-in, verification action links, password-reset action links, reset completion, old-password rejection, tampered-code rejection and reused-code rejection.
+- Master emulator command: `powershell -NoProfile -ExecutionPolicy Bypass -File tests/run_emulator_tests.ps1`
+- Actual emulator results: 18/18 Auth lifecycle workflows passed; 30/30 Firestore rules checks passed.
+- Synthetic accounts and emulator state are cleaned/exported locally; no production account is created or deleted.
+- Added `tests/production_auth_config_test.mjs` and `tests/browser_emulator.spec.js`; added CI workflow `.github/workflows/emulator-tests.yml`.
+- Production Auth inventory exported successfully: 4 existing production accounts, no modifications.
+- Production email/provider settings are not considered delivery-verified. Firebase built-in email delivery remains available only when enabled/configured in the Firebase Console; inbox delivery requires a real mailbox or controlled test identity.
+
 ### Production verification after commit c20f21c
 
 - GitHub push succeeded; GitHub Pages Actions run `44553272564` completed successfully.

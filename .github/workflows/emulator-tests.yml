@@ -1,0 +1,25 @@
+name: Firebase emulator tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  emulator-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install emulator test dependencies
+        run: npm install --no-save --ignore-scripts --legacy-peer-deps firebase@11.10.0 @firebase/rules-unit-testing@4.0.1
+      - name: Install Playwright browser
+        run: npx --yes playwright@1.65.1 install --with-deps chromium
+      - name: Start emulators and run synthetic Auth/Firestore tests
+        env:
+          FJ_TEST_DEPS: ${{ github.workspace }}
+        run: npx --yes firebase-tools@15.37.0 emulators:exec --only auth,firestore "node tests/auth_emulator_test.mjs && node tests/firestore_emulator_test.mjs && npx --yes playwright@1.65.1 test tests/browser_emulator.spec.js --reporter=line" --project demo-fj-website-384fd --export-on-exit /tmp/fj-emulator-test
