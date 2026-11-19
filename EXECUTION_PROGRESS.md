@@ -1,16 +1,15 @@
 # FJ website execution progress
 
-Updated: 2026-11-18 (Europe/Stockholm)
+Updated: 2026-11-19 (Europe/Stockholm)
 
 ## Repository
 
 - Existing project: `C:\Users\faiss\OneDrive\Desktop\FJ-website`.
-- `2cca634` is on `main` and `origin/main`.
-- Local implementation commits through `29756a7` are not pushed. Pre-existing user files, backups, and local state remain untouched.
+- Repository `main` and `origin/main` were synchronized at `ba7c957cf7821e6c00cae4595d1bc88969bf53b2` when this continuation resumed. No pending repository commits existed at that point. Existing untracked config, backups and local state remain untouched.
 
 ## Latest local checks
 
-- `node tests/run_all_tests.js`: 149 passed, 0 failed. This includes 57 Firestore logic simulator cases, 10 independent QR decodes, QR color/quiet-zone checks, tab-scoped human verification, account lifecycle, and deployment allowlist checks.
+- `node tests/run_all_tests.js`: 194 passed, 0 failed after the D1-backed Worker and Post It Pal changes. This includes 57 Firestore logic simulator cases, 49 Worker backend assertions, 38 website checks, 10 independent QR decodes, tab-scoped human verification, account lifecycle, and deployment allowlist checks.
 - Firestore Local Emulator Suite: 27/27 actual rules-unit tests passed, covering UID isolation, role injection, owner session absence/forgery, deletion scheduling, suspension, cancellation, deadline enforcement and cleanup. The test script passed; Firebase CLI exits 1 afterward due its local update-check/config-store error.
 - Syntax checks passed for `app.js`, `notes.js`, `pip.js`, `qr-tech.js`, `qr-url.js`, and `backend/worker.js`.
 - `git diff --check` passed.
@@ -21,6 +20,13 @@ Updated: 2026-11-18 (Europe/Stockholm)
 - QR-tech now chooses a high-contrast accent color for each newly generated QR and prevents immediate repeat colors; the four-module quiet zone remains in place.
 - All public HTML pages now carry a restrictive CSP meta policy and a referrer policy; the CSP allows only the Firebase/Wikipedia endpoints and Google Fonts actually used by the site.
 - Your Notes supports a 30-day deletion request, immediate rules-enforced note suspension, cancellation during the grace period, and reauthenticated permanent deletion after the deadline. The user must sign in and confirm after 30 days; no unattended scheduler is present or claimed.
+- Cloudflare Worker now uses D1-backed persistent password hash, brute-force counters, sessions and invitation digests. No production state is stored in isolate-local Maps. D1 migration `0001_security_state.sql` was applied remotely and Worker version `9eff9bf6-9090-49a3-bc9f-fd5ba50b0ffb` deployed to `https://fj-api.jimyass.workers.dev`.
+- D1 migrations `0001_security_state.sql`, `0002_pip_social.sql`, and `0003_request_indexes.sql` are applied remotely. A randomly generated HMAC key is stored as a Cloudflare Worker secret (not in source, Git, logs, or chat). Latest Worker version `e71a7ccb-9774-467b-b5f0-d3bf1b7af10c` is deployed at `https://fj-api.jimyass.workers.dev`.
+- Production probes against latest Worker: root `200`; public aggregate count `200` and reveals only `count`; forged owner token to `/api/notes/verify`, `/api/pals`, and `/api/pals/invite` each `401`, all `Cache-Control: no-store`.
+- Worker-backed PIP now has privacy-preserving email invitations (constant response whether account exists), mutually accepted Pals, authenticated private message reads/writes, unread counts/Noty, message and invitation rate limits, active verified-account aggregate count, and account deletion suspension/cancellation plus confirmed removal of D1 social/count records after the 30-day deadline. These routes are not yet deployed with the frontend; Pages publishing is pending the next Git push.
+- Firebase Firestore emulator run completed all 27/27 rules tests. Firebase CLI emitted its known local config/update-check error only after the test runner exited successfully.
+- Live routes checked: homepage `/` `200`, `/pip/` `200`, `/qr/` `200`, `/backend/worker.js` `404`. GitHub Pages was already current through `ba7c957`; no pending Pages commit existed at resume.
+- Verified Cloudflare free-tier D1 is offered with enforced daily row read/write limits; over-limit D1 requests fail until reset. No paid service was enabled.
 
 ## Production evidence
 
@@ -40,26 +46,27 @@ Updated: 2026-11-18 (Europe/Stockholm)
 
 ## Deployment access
 
-- GitHub Pages workflow source is configured for GitHub Actions. The user pushed `2cca634`, which deployed successfully in the prior run.
-- Firebase CLI is available at `%APPDATA%\npm\firebase.cmd`; it reports expired credentials but compiled and released the current ruleset. Its nonzero post-run state still needs repair before future deployment actions.
-- Wrangler 4 was installed using `npx`. `wrangler whoami` reports the Cloudflare OAuth token expired. The Cloudflare dashboard opens to its sign-in page; no current authenticated Cloudflare browser session was found.
+- GitHub Pages is configured for GitHub Actions and currently published through `ba7c957`. GitHub Actions run `44440065298` succeeded.
+- Refreshed Cloudflare authentication was available. Wrangler 4.164.0 created D1 database `fj-api-state` (database ID `3f4828b7-8c5f-4725-b801-3d2bea416312`), applied its migration remotely, and deployed `fj-api` successfully.
+- Wrangler logging was redirected into the writable task work folder; no credential contents were printed or saved in the repository.
 
 ### Continuation on 2026-11-18
 
 - Committed reviewed frontend, workflow, Worker, rules, and test changes as local commit `142db21` (parent `2cca634`). The user-owned untracked configuration, task text, backups, and `.wrangler` state were not staged.
 - Follow-up execution record is commit `6823b1d`; tab-scoped human verification is `02d0ba6`; QR color behavior and regression coverage are `ec4945b`.
 - CSP policy and website audit assertion are committed as `161de8e`; the deletion flow/rules/tests are committed as `29756a7`.
-- `git push origin main` was attempted after commit and failed before authentication: Git Credential Manager could not access Windows credentials (`0xC0000022`, Credential Manager `0x5`). Remote `main` remains `2cca634`.
+- That historical push attempt failed before authentication; the user subsequently refreshed GitHub auth and pushed the work. Current remote is synchronized at `ba7c957`.
 - Firebase rules were released successfully (CLI printed `Deploy complete!`); the process then exited 1 from the local Firebase CLI update-check/config-store failure. Live unauthenticated REST checks return 403 for protected collections.
 - Cloudflare OAuth remains expired. `wrangler whoami` previously reported the expired token, so the current local Worker changes have not been deployed.
 
 ## Next operations
 
-1. Replace Worker isolate-local password/session/invitation maps with a durable free-tier backend and connect trusted session issuance to Firestore before restoring owner Notes access.
-2. Finish the separate Your Notes password, administrators, unattended deletion, public user count, Post It Pal, protected attachments/offline behavior, approval-email workflow, and integrated FJ QR design.
-3. Reauthorize Git Credential Manager, push all local commits through `29756a7`, wait for Pages deployment, and verify `/pip/` and the deployed revision.
-4. Reauthorize Wrangler, deploy and independently test the Worker; replace its isolate-local state with durable trusted session issuance before restoring owner Notes access.
+1. Finish the separate Your Notes app password and note-level password protection.
+2. Implement complete per-user administrator permissions, consented last-seen/profile pictures, attachment and offline protections, and approval email jobs.
+3. Implement and test an unattended full account deletion mechanism that removes Firebase Auth, Firestore notes and related records after the grace period. Current Worker cleanup only handles its D1 Post It Pal records after the user confirms; it is not unattended and does not delete Firebase records.
+4. Connect the original owner Notes page to a trusted Firebase session issuer. Current Firestore rules intentionally fail closed; Worker D1 sessions are not Firestore Admin SDK sessions.
+5. Push the current implementation, wait for Pages Actions, visually and functionally verify live `/pip/` and homepage changes, then repeat production security probes.
 
 ## Completion
 
-Incomplete. Production source routes are no longer accessible, forged tokens are rejected, and the latest account-lifecycle Firestore rules are released. Local commits through `29756a7` contain the tested PIP, session-rule, human-verification, QR-tech, CSP, referrer-policy and deletion work but are not pushed because Git Credential Manager cannot access Windows credentials. The current GitHub Pages version therefore still lacks PIP. The Worker still needs a durable backend and redeployment, original Notes is fail-closed pending trusted session issuance, multiple required features remain unimplemented, and end-to-end production acceptance has not passed.
+Incomplete. The production Worker now includes D1-backed PIP social and count routes, and Worker probes reject forged tokens. `/pip/` and `/backend/worker.js` were verified before the current unpushed frontend additions; the newly implemented Post It Pal and count UI are not live until the pending Git push and Pages workflow complete. Original owner Notes remains fail-closed pending a trusted Firebase session issuer. Separate Your Notes password, note-level passwords, full admin permissions, unattended complete deletion, approval emails, consented last-seen/profile pictures, attachment/offline security, and integrated FJ-shaped QR remain incomplete. End-to-end master acceptance has not passed.

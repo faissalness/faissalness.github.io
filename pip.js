@@ -7,12 +7,165 @@ const $ = selector => document.querySelector(selector);
 const app = initializeApp(firebaseConfig, "FJYourNotes");
 const auth = getAuth(app);
 const db = getFirestore(app);
+const API = "https://fj-api.jimyass.workers.dev";
 let activeUser = null;
 let selectedId = null;
 let unsubscribe = null;
 let notes = [];
 let emailVerificationUser = null;
 let accountDeletion = null;
+let selectedPalUid = null;
+let palRefreshTimer = null;
+
+async function palApi(path, options = {}) {
+  if (!activeUser) throw new Error("Sign in required");
+  const idToken = await activeUser.getIdToken();
+  const response = await fetch(`${API}${path}`, {
+    ...options,
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}`, ...(options.headers || {}) }
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || "Service unavailable");
+  return data;
+}
+
+function addTextNode(parent, text, className) {
+  const node = document.createElement("p");
+  if (className) node.className = className;
+  node.textContent = text;
+  parent.append(node);
+  return node;
+}
+
+async function refreshPalExperience() {
+  if (!activeUser) return;
+  const [palResult, inviteResult] = await Promise.all([
+    palApi("/api/pals"), palApi("/api/pals/invitations")
+  ]);
+  const palsList = $("#pip-pal-list");
+  const invitesList = $("#pip-pal-invitations");
+  const notyList = $("#pip-noty-list");
+  palsList.replaceChildren();
+  invitesList.replaceChildren();
+  notyList.replaceChildren();
+  const pals = palResult.pals || [];
+  const invitations = inviteResult.invitations || [];
+  let unreadTotal = 0;
+  if (!pals.length) addTextNode(palsList, "No Pals yet.", "pip-empty");
+  for (const pal of pals) {
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = `pip-note-row${pal.uid === selectedPalUid ? " active" : ""}`;
+    row.setAttribute("aria-label", `${pal.displayName || "Pal"}${pal.unread ? `, ${pal.unread} unread` : ""}`);
+    const label = document.createElement("span");
+    label.className = "pip-note-row-title";
+    label.textContent = pal.displayName || "PIP Pal";
+    const badge = document.createElement("span");
+    badge.className = "pip-note-row-date";
+    badge.textContent = pal.unread ? `${pal.unread} unread` : "Open conversation";
+    unreadTotal += Number(pal.unread || 0);
+    row.append(label, badge);
+    row.addEventListener("click", () => openPalConversation(pal));
+    palsList.append(row);
+  }
+  if (!invitations.length) addTextNode(invitesList, "No pending invitations.", "pip-empty");
+  for (const invitation of invitations) {
+    const row = document.createElement("div");
+    row.className = "pip-invitation-row";
+    addTextNode(row, invitation.status === "accepted"
+      ? `${invitation.inviterName || "Your Pal"} accepted your invitation`
+      : invitation.direction === "received" ? `Pal invite from ${invitation.inviterName || "a PIP user"}` : "Pal invitation sent", "pip-note-row-title");
+    if (invitation.direction === "received") {
+      for (const action of ["accept", "decline"]) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "text-button";
+        button.textContent = action === "accept" ? "+Pal" : "Ignore";
+        button.addEventListener("click", async () => {
+          button.disabled = true;
+          try {
+            await palApi(`/api/pals/invitations/${encodeURIComponent(invitation.id)}/respond`, {
+              method: "POST", body: JSON.stringify({ action })
+            });
+            await refreshPalExperience();
+          } catch { status("Could not update this invitation. Try again.", "error"); button.disabled = false; }
+        });
+        row.append(button);
+      }
+    }
+    invitesList.append(row);
+    if (invitation.direction === "received") addTextNode(notyList, `New Pal invitation from ${invitation.inviterName || "a PIP user"}.`, "pip-noty-item");
+    if (invitation.direction === "sent" && invitation.status === "accepted") addTextNode(notyList, `${invitation.inviterName || "Your Pal"} accepted your Pal invitation.`, "pip-noty-item");
+  }
+  if (unreadTotal) addTextNode(notyList, `${unreadTotal} unread Post It ${unreadTotal === 1 ? "note" : "notes"}.`, "pip-noty-item");
+  if (!notyList.childElementCount) addTextNode(notyList, "You are all caught up.", "pip-empty");
+  const notyCount = $("#pip-noty-count");
+  const notificationCount = unreadTotal + invitations.filter(item => item.direction === "received" || item.status === "accepted").length;
+  notyCount.textContent = String(notificationCount);
+  notyCount.hidden = notificationCount === 0;
+  if (selectedPalUid && !pals.some(item => item.uid === selectedPalUid)) {
+    selectedPalUid = null;
+    $("#pip-pal-title").textContent = "Choose a Pal";
+    $("#pip-pal-messages").replaceChildren();
+    $("#pip-pal-message-form").hidden = true;
+  }
+}
+
+async function openPalConversation(pal) {
+  selectedPalUid = pal.uid;
+  $("#pip-pal-title").textContent = pal.displayName || "PIP conversation";
+  $("#pip-pal-message-form").hidden = false;
+  try {
+    const result = await palApi(`/api/pals/${encodeURIComponent(pal.uid)}/messages`);
+    const container = $("#pip-pal-messages");
+    container.replaceChildren();
+    if (!(result.messages || []).length) addTextNode(container, "Start the conversation with a Post It.", "pip-empty");
+    for (const message of result.messages || []) {
+      const article = document.createElement("article");
+      article.className = `pip-message${message.senderUid === activeUser.uid ? " own" : ""}`;
+      addTextNode(article, message.body, "pip-message-body");
+      addTextNode(article, new Date(message.createdAt).toLocaleString(), "pip-note-row-date");
+      container.append(article);
+    }
+    container.scrollTop = container.scrollHeight;
+    await refreshPalExperience();
+  } catch { status("Could not load this conversation.", "error"); }
+}
+
+document.querySelectorAll("[data-pip-view]").forEach(button => button.addEventListener("click", () => {
+  document.querySelectorAll("[data-pip-view]").forEach(item => item.classList.toggle("active", item === button));
+  document.querySelectorAll(".pip-view").forEach(view => { view.hidden = view.id !== `pip-view-${button.dataset.pipView}`; });
+  if (button.dataset.pipView !== "notes") refreshPalExperience().catch(() => status("Post It Pal is temporarily unavailable. Try again.", "error"));
+}));
+
+$("#pip-pal-invite-form").addEventListener("submit", async event => {
+  event.preventDefault();
+  const button = event.currentTarget.querySelector('button[type="submit"]');
+  button.disabled = true;
+  try {
+    const email = $("#pip-pal-email").value.trim();
+    const result = await palApi("/api/pals/invite", { method: "POST", body: JSON.stringify({ email }) });
+    status(result.message, "success");
+    event.currentTarget.reset();
+    await refreshPalExperience();
+  } catch (error) { status(error.message, "error"); }
+  finally { button.disabled = false; }
+});
+
+$("#pip-pal-message-form").addEventListener("submit", async event => {
+  event.preventDefault();
+  if (!selectedPalUid) return;
+  const button = event.currentTarget.querySelector('button[type="submit"]');
+  button.disabled = true;
+  try {
+    await palApi(`/api/pals/${encodeURIComponent(selectedPalUid)}/messages`, {
+      method: "POST", body: JSON.stringify({ body: $("#pip-pal-message").value })
+    });
+    $("#pip-pal-message").value = "";
+    await openPalConversation({ uid: selectedPalUid, displayName: $("#pip-pal-title").textContent });
+  } catch (error) { status(error.message, "error"); }
+  finally { button.disabled = false; }
+});
 
 function status(message, kind = "info") {
   const box = $("#pip-status");
@@ -114,16 +267,22 @@ async function syncAccountLifecycle(user) {
 $("#pip-schedule-deletion").addEventListener("click", async () => {
   if (!activeUser || !confirm("Schedule account deletion? Your notes will be locked now. You can cancel for 30 days, then sign in again and confirm permanent deletion.")) return;
   const button = $("#pip-schedule-deletion");
+  let apiScheduled = false;
   button.disabled = true;
   try {
+    const apiSchedule = await palApi("/api/users/deletion", { method: "POST", body: JSON.stringify({ action: "schedule" }) });
+    apiScheduled = true;
     const now = Date.now();
     await setDoc(doc(db, "yourNotes", activeUser.uid), {
       deletionStatus: "scheduled",
       deletionRequestedAt: serverTimestamp(),
-      deletionAt: Timestamp.fromMillis(now + 30 * 24 * 60 * 60 * 1000)
+      deletionAt: Timestamp.fromMillis(apiSchedule.deletionAt || now + 30 * 24 * 60 * 60 * 1000)
     });
     await syncAccountLifecycle(activeUser);
-  } catch { status("Could not schedule deletion. Your account and notes are unchanged.", "error"); }
+  } catch {
+    if (apiScheduled) await palApi("/api/users/deletion", { method: "POST", body: JSON.stringify({ action: "cancel" }) }).catch(() => {});
+    status("Could not schedule deletion across account services. Check your connection and retry.", "error");
+  }
   finally { button.disabled = false; }
 });
 
@@ -132,6 +291,7 @@ $("#pip-cancel-deletion").addEventListener("click", async () => {
   const button = $("#pip-cancel-deletion");
   button.disabled = true;
   try {
+    await palApi("/api/users/deletion", { method: "POST", body: JSON.stringify({ action: "cancel" }) });
     await updateDoc(doc(db, "yourNotes", activeUser.uid), {
       deletionStatus: "active",
       deletionCancelledAt: serverTimestamp()
@@ -162,8 +322,10 @@ $("#pip-finalize-deletion-form").addEventListener("submit", async event => {
   try {
     const credential = EmailAuthProvider.credential(activeUser.email, $("#pip-delete-password").value);
     await reauthenticateWithCredential(activeUser, credential);
+    await activeUser.getIdToken(true);
     await erasePersonalNotes(activeUser.uid);
     await deleteDoc(doc(db, "yourNotes", activeUser.uid));
+    await palApi("/api/users/finalize-deletion", { method: "POST", body: JSON.stringify({ confirmed: true }) });
     await deleteUser(activeUser);
     activeUser = null;
     accountDeletion = null;
@@ -272,7 +434,14 @@ function showPrivateNotes(user) {
   if (user) {
     $("#pip-welcome").textContent = user.displayName ? `${user.displayName}'s Notes.` : "Your Notes.";
     syncAccountLifecycle(user).catch(() => status("Could not load account status. Notes remain protected until it can be checked.", "error"));
+    palApi("/api/users/register", { method: "POST", body: "{}" })
+      .then(refreshPalExperience)
+      .catch(() => status("Your private notes are available; the public account count and Post It Pal could not sync.", "error"));
+    clearInterval(palRefreshTimer);
+    palRefreshTimer = setInterval(() => refreshPalExperience().catch(() => {}), 30000);
   } else {
+    clearInterval(palRefreshTimer);
+    palRefreshTimer = null;
     unsubscribe?.();
     unsubscribe = null;
     notes = [];

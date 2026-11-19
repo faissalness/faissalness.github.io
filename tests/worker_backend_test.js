@@ -13,6 +13,7 @@ const assert = require('assert');
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
+const { FakeD1 } = require('./fake_d1');
 
 const TEST_KID = "fj-test-key";
 const TEST_CERT = fs.readFileSync(path.join(__dirname, "fixtures", "worker-test-cert.pem"), "utf8");
@@ -70,7 +71,14 @@ const userToken = makeTestJwt({
     return originalFetch(input, init);
   };
   const workerModule = await import('../backend/worker.js');
-  const worker = workerModule.default;
+  const implementation = workerModule.default;
+  const env = { DB: new FakeD1(), PAL_LOOKUP_SECRET: "test-only-hmac-secret-with-at-least-32-characters" };
+  const worker = { fetch: (request, _env, ctx) => implementation.fetch(request, env, ctx) };
+
+  const missingBinding = await implementation.fetch(new Request("https://api.local/api/notes/verify", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: "ignored" })
+  }), {}, {});
+  assert.strictEqual(missingBinding.status, 503, "Protected API must fail closed when its durable database binding is missing");
 
   const redemptionWithoutIdentity = await worker.fetch(new Request("https://api.local/api/invitations/redeem", {
     method: "POST", headers: { "Content-Type": "application/json" },
@@ -221,6 +229,76 @@ const userToken = makeTestJwt({
   }), {}, {});
   assert.strictEqual(resOldPwd.status, 403, "Old password must be rejected after rotation");
   console.log(" PASS: Password rotation by owner revokes existing sessions and updates hash.");
+
+  // D1 is the source of truth across Worker isolates; a newly created handler
+  // sharing the binding must continue to recognize the configured password.
+  const restartedWorker = { fetch: (request, _env, ctx) => implementation.fetch(request, env, ctx) };
+  const afterRestart = await restartedWorker.fetch(new Request("https://api.local/api/notes/verify", {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${validOwnerToken}`, "Content-Type": "application/json", "CF-Connecting-IP": "10.0.0.2" },
+    body: JSON.stringify({ password: "NewSecretPassword2026!" })
+  }), {}, {});
+  assert.strictEqual(afterRestart.status, 200, "Password configuration must persist outside an individual Worker isolate");
+  console.log(" PASS: D1-backed password state survives a Worker handler restart.");
+
+  const createInvite = await worker.fetch(new Request("https://api.local/api/invitations/create", {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${validOwnerToken}`, "Content-Type": "application/json" }, body: "{}"
+  }), {}, {});
+  assert.strictEqual(createInvite.status, 201, "Only the owner can issue a persistent invitation");
+  const issued = await createInvite.json();
+  assert.match(issued.token, /^fj_[0-9a-f]{48}fj$/);
+  const redeemRequest = () => new Request("https://api.local/api/invitations/redeem", {
+    method: "POST", headers: { "Authorization": `Bearer ${userToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ token: issued.token })
+  });
+  const redeemOnce = await worker.fetch(redeemRequest(), {}, {});
+  const redeemTwice = await worker.fetch(redeemRequest(), {}, {});
+  assert.strictEqual(redeemOnce.status, 200, "A valid owner-issued invitation can be redeemed once");
+  assert.strictEqual(redeemTwice.status, 400, "A persistent invitation cannot be replayed");
+  console.log(" PASS: D1 invitation creation, redemption and replay prevention verified.");
+
+  const ownerAppToken = makeTestJwt(makeClaims({ email: "owner@example.com", email_verified: true, name: "Owner" }));
+  const palAppToken = makeTestJwt(makeClaims({ sub: "regular_user_123", email: "pal@example.com", email_verified: true, name: "Pal" }));
+  const thirdAppToken = makeTestJwt(makeClaims({ sub: "third_user_456", email: "third@example.com", email_verified: true, name: "Third" }));
+  const authed = (token, url, method = "GET", body) => worker.fetch(new Request(`https://api.local${url}`, {
+    method, headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body)
+  }), {}, {});
+
+  assert.strictEqual((await authed(ownerAppToken, "/api/users/register", "POST", {})).status, 200);
+  assert.strictEqual((await authed(palAppToken, "/api/users/register", "POST", {})).status, 200);
+  const countBefore = await (await worker.fetch(new Request("https://api.local/api/users/count"), {}, {})).json();
+  assert.strictEqual(countBefore.count, 2, "Public count contains verified unique accounts only");
+  const unknownInvite = await authed(ownerAppToken, "/api/pals/invite", "POST", { email: "not-a-member@example.com" });
+  const knownInvite = await authed(ownerAppToken, "/api/pals/invite", "POST", { email: "pal@example.com" });
+  assert.strictEqual(unknownInvite.status, 202);
+  assert.strictEqual(knownInvite.status, 202);
+  assert.deepStrictEqual(await unknownInvite.json(), await knownInvite.json(), "Pal lookup response must not reveal account existence");
+  for (let i = 0; i < 28; i++) await authed(ownerAppToken, "/api/pals/invite", "POST", { email: `other${i}@example.com` });
+  assert.strictEqual((await authed(ownerAppToken, "/api/pals/invite", "POST", { email: "over-limit@example.com" })).status, 429, "Pal invitation creation is rate limited");
+  const inbox = await (await authed(palAppToken, "/api/pals/invitations")).json();
+  assert.strictEqual(inbox.invitations.length, 1, "Only the invited verified email can retrieve its invitation");
+  assert.strictEqual((await authed(palAppToken, `/api/pals/invitations/${inbox.invitations[0].id}/respond`, "POST", { action: "accept" })).status, 200);
+  const ownerPals = await (await authed(ownerAppToken, "/api/pals")).json();
+  assert.strictEqual(ownerPals.pals[0].uid, "regular_user_123", "Accepted Pal is visible to the inviter");
+  assert.strictEqual((await authed(ownerAppToken, "/api/pals/regular_user_123/messages", "POST", { body: "A private Post It 💌" })).status, 201);
+  for (let i = 0; i < 119; i++) await authed(ownerAppToken, "/api/pals/regular_user_123/messages", "POST", { body: `bounded test ${i}` });
+  assert.strictEqual((await authed(ownerAppToken, "/api/pals/regular_user_123/messages", "POST", { body: "over limit" })).status, 429, "PIP message sending is rate limited");
+  assert.strictEqual((await authed(thirdAppToken, "/api/pals/regular_user_123/messages")).status, 403, "Unrelated users cannot read a Pal conversation by changing its UID");
+  const conversation = await (await authed(palAppToken, "/api/pals/hDbzbNTC7pOuU2UFCjFksopbgaG3/messages")).json();
+  assert.ok(conversation.messages.some(message => message.body === "A private Post It 💌"), "Pals can exchange UTF-8 private messages");
+  assert.strictEqual((await authed(palAppToken, "/api/users/deletion", "POST", { action: "schedule" })).status, 200);
+  const countDuringGrace = await (await worker.fetch(new Request("https://api.local/api/users/count"), {}, {})).json();
+  assert.strictEqual(countDuringGrace.count, 1, "Scheduled accounts are immediately excluded from active user count");
+  assert.strictEqual((await authed(palAppToken, "/api/pals")).status, 403, "Scheduled deletion suspends Post It Pal access");
+  assert.strictEqual((await authed(palAppToken, "/api/users/deletion", "POST", { action: "cancel" })).status, 200);
+  assert.strictEqual((await authed(palAppToken, "/api/users/deletion", "POST", { action: "schedule" })).status, 200);
+  assert.strictEqual((await authed(palAppToken, "/api/users/finalize-deletion", "POST", { confirmed: true })).status, 409, "Deletion cannot be finalized before 30 days");
+  env.DB.users.get("regular_user_123").deletionAt = Date.now() - 1;
+  assert.strictEqual((await authed(palAppToken, "/api/users/finalize-deletion", "POST", { confirmed: true })).status, 200, "A due, reauthenticated deletion removes the user's Pal records");
+  const countAfterDeletion = await (await worker.fetch(new Request("https://api.local/api/users/count"), {}, {})).json();
+  assert.strictEqual(countAfterDeletion.count, 1, "Finalized deletion updates the public aggregate without exposing account identity");
+  console.log(" PASS: User aggregate, privacy-preserving Pal lookup, invitation acceptance, message isolation and deletion suspension verified.");
 
   console.log("\n=== ALL WORKER BACKEND TESTS PASSED SUCCESSFULLY! ===");
   global.fetch = originalFetch;

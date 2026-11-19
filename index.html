@@ -4,12 +4,12 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#020203">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; script-src 'self' https://www.gstatic.com; connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com wss://firestore.googleapis.com https://firebasestorage.googleapis.com https://www.googleapis.com https://en.wikipedia.org; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; script-src 'self' https://www.gstatic.com; connect-src 'self' https://fj-api.jimyass.workers.dev https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com wss://firestore.googleapis.com https://firebasestorage.googleapis.com https://www.googleapis.com https://en.wikipedia.org; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com">
   <meta name="referrer" content="strict-origin-when-cross-origin">
   <meta name="description" content="FJ — a private corner of the internet.">
   <title>FJ — private frequency</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="styles.css?v=20261115-3">
+  <link rel="stylesheet" href="styles.css?v=20261119-1">
 </head>
 <body class="site-body auth-pending">
   <header class="topbar">
@@ -38,6 +38,7 @@
       </form>
       <p class="micro-note">A tiny, local check. No trackers. No external CAPTCHA.</p>
     </section>
+    <p id="public-user-count" class="public-user-count" aria-live="polite" hidden></p>
 
     <section id="auth-shell" class="auth-shell" aria-label="Sign in or request access" hidden>
       <div class="auth-heading"><p class="eyebrow">FJ / PRIVATE FREQUENCY</p><h1>Step inside<span>—</span></h1><p>Two routes into the same quiet space.</p></div>
@@ -78,6 +79,6 @@
   <p id="site-feedback" class="site-feedback" role="status" aria-live="polite" hidden></p>
   </main>
   <div class="screen-flash" id="screen-flash" aria-hidden="true"></div>
-  <script type="module" src="app.js?v=20261115-3"></script>
+  <script type="module" src="app.js?v=20261119-1"></script>
 </body>
 </html>

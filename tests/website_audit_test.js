@@ -82,6 +82,13 @@ assert.ok(fs.readFileSync(path.join(ROOT, 'firestore.rules'), 'utf8').includes('
   'Your Notes rules must require verified Firebase email identity');
 passedAudits++;
 passedAudits += 2;
+assert.ok(pipPage.includes('data-pip-view="pals"') && pipPage.includes('data-pip-view="noty"') && pipPage.includes('id="pip-pal-invite-form"'),
+  'PIP must include Notes, private Pal invitations, and a Noty inbox view');
+assert.ok(pipScript.includes('/api/pals/invite') && pipScript.includes('/api/pals/${encodeURIComponent(pal.uid)}/messages') && !pipScript.includes('.innerHTML'),
+  'Post It Pal requests must use authenticated backend routes and render user content as text');
+assert.ok(fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8').includes('id="public-user-count"') && fs.readFileSync(path.join(ROOT, 'app.js'), 'utf8').includes('/api/users/count'),
+  'The public homepage must request only the aggregate registered-account count');
+passedAudits += 3;
 console.log(" PASS: Core assets (qr.png, favicon.svg, styles.css) exist and are valid.");
 
 // 4. Verify Accessibility: Reduced-Motion and Visible Focus

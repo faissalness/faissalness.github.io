@@ -6,3 +6,9 @@ compatibility_date = "2024-09-23"
 # Zero Billing / No Paid Features / Genuinely Free Tier
 [placement]
 mode = "smart"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "fj-api-state"
+database_id = "3f4828b7-8c5f-4725-b801-3d2bea416312"
+migrations_dir = "migrations"

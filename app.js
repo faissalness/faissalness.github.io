@@ -8,6 +8,17 @@ import { destinations } from "./destinations.js";
 const $ = selector => document.querySelector(selector);
 const status = $("#status");
 const logo = $("#fj");
+const publicUserCount = $("#public-user-count");
+if (publicUserCount) {
+  fetch("https://fj-api.jimyass.workers.dev/api/users/count", { headers: { Accept: "application/json" } })
+    .then(response => response.ok ? response.json() : Promise.reject())
+    .then(result => {
+      if (Number.isSafeInteger(result.count) && result.count >= 0) {
+        publicUserCount.textContent = `${result.count.toLocaleString()} verified Your Notes ${result.count === 1 ? "account" : "accounts"}`;
+        publicUserCount.hidden = false;
+      }
+    }).catch(() => { publicUserCount.hidden = true; });
+}
 const palette = ["#d2ff5a", "#ff70b7", "#86d9ff", "#f2f0e9", "#c6a7ff", "#ffb37b"];
 let requestInProgress = false;
 let unsubscribeRequests;
