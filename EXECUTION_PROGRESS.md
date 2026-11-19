@@ -13,6 +13,22 @@ Updated: 2026-11-19 (Europe/Stockholm)
 - Firestore Local Emulator Suite: 27/27 actual rules-unit tests passed, covering UID isolation, role injection, owner session absence/forgery, deletion scheduling, suspension, cancellation, deadline enforcement and cleanup. The test script passed; Firebase CLI exits 1 afterward due its local update-check/config-store error.
 - Syntax checks passed for `app.js`, `notes.js`, `pip.js`, `qr-tech.js`, `qr-url.js`, and `backend/worker.js`.
 - `git diff --check` passed.
+
+### Production verification after commit c20f21c
+
+- GitHub push succeeded; GitHub Pages Actions run `44553272564` completed successfully.
+- GitHub Pages workflow head commit: `c20f21ccf034566b6149c343a8f9722b7e4e5d5d`.
+- Live homepage `/` and `/pip/` return HTTP 200.
+- Live `/pip/` contains the deployed Trash and Post It Pal artifact markers.
+- `/backend/worker.js` and `/firestore.rules` remain unavailable as public Pages artifacts.
+- Cloudflare root and public count endpoints return HTTP 200.
+- Forged bearer tokens to `/api/pals` and `/api/notes/verify` return HTTP 401.
+- Unauthenticated Firestore REST reads to `yourNotes` and `privateNotes` return HTTP 403.
+- Git commit `c20f21c` (`Complete secure approval, Trash, and scheduled cleanup`) is pushed to `origin/main`.
+
+### Remaining externally dependent limitation
+
+- Full Firebase Auth and Firestore data erasure cannot be made unattended without a trusted Firebase Admin SDK credential/service in the deployment environment. The existing reauthenticated manual account deletion remains; it is not safe to invent or bypass that credential boundary.
 - A local run of the Pages allowlist assembly succeeded: 26 files, five clean route aliases, no Worker/source-map markers.
 - QR test independently decoded the JavaScript-generated QR matrix to the exact test URL and covers unsafe URL rejection.
 - PIP page was visually checked at 390px mobile width; navigation, sign-in and account creation cards fit the viewport.
