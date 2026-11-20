@@ -39,7 +39,7 @@ for (const file of ['index.html', 'notes.html', 'pip.html']) {
 
 console.log("\n3. Owner/admin-exclusive access");
 check('Ground Zero redirects unauthenticated visitors to the main website', groundZeroJs.includes('window.location.href = "/"'));
-check('Ground Zero allows the owner by the immutable UID', groundZeroJs.includes('user.uid !== ownerUid') && groundZeroJs.includes('admins.has(user.uid)'));
+check('Ground Zero allows the owner by the immutable UID', groundZeroJs.includes('gzUser.uid === ownerUid') && groundZeroJs.includes('admins.has(gzUser.uid)'));
 check('Ground Zero reads the admins collection for authorized admins', groundZeroJs.includes('collection(db, "admins")'));
 check('Main site reveals Ground Zero 00 for the owner and authorized admins', appJs.includes('#gz-nav') && appJs.includes('getDoc(doc(db, "admins", user.uid))'));
 

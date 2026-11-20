@@ -274,25 +274,60 @@ $("#gz-admin-form")?.addEventListener("submit", event => {
 
 function redirectHome() { window.location.href = "/"; }
 
-// Ground Zero 00 is exclusively for the owner and explicitly authorized admins.
-onAuthStateChanged(auth, async user => {
-  if (!user) {
-    // On refresh, Firebase may invoke the callback before the persisted session is
-    // restored. Give the restored session a moment to appear before redirecting;
-    // a genuinely signed-out visitor still ends at the main website.
-    for (let attempt = 0; attempt < 20 && !auth.currentUser; attempt += 1) {
-      await new Promise(resolve => setTimeout(resolve, 100));
+// Ground Zero 00 — deterministic auth state machine (per Firebase docs):
+//   INITIALIZING -> AUTHENTICATED -> AUTHORIZED
+//                -> UNAUTHORIZED (settled but not owner/admin)
+//                -> ERROR      (settled, technical failure — shown, not redirected)
+// Never redirect during INITIALIZING; never treat backend errors as "signed out".
+let gzStatus = "INITIALIZING";
+let gzUser = null;
+
+function gzDisplayLoading() {
+  setStatus("Verifying access to Ground Zero 00…", "info");
+  const table = $("#gz-accounts-table");
+  if (table) table.hidden = true;
+}
+
+async function gzCheckAuthorization() {
+  if (!gzUser) { gzStatus = "UNAUTHORIZED"; redirectHome(); return; }
+  if (gzUser.uid === ownerUid) {
+    // The owner bypasses every application and permission state.
+    gzStatus = "AUTHORIZED";
+  } else {
+    try { await loadAdmins(); } catch (_) { admins = new Map(); }
+    renderAdmins();
+    if (admins.has(gzUser.uid)) {
+      gzStatus = "AUTHORIZED";
+    } else {
+      gzStatus = "UNAUTHORIZED";
+      setStatus("Ground Zero 00 is exclusively for the owner and authorized admins.", "error");
+      redirectHome();
+      return;
     }
-    user = auth.currentUser;
   }
-  if (!user) { redirectHome(); return; }
-  try { await loadAdmins(); } catch (_) { admins = new Map(); }
-  renderAdmins();
-  if (user.uid !== ownerUid && !admins.has(user.uid)) {
-    setStatus("Ground Zero 00 is exclusively for the owner and authorized admins.", "error");
-    redirectHome();
-    return;
-  }
+  gzStatus = "AUTHORIZED";
   setStatus("");
   try { await loadAccounts(); } catch (error) { setStatus(`Could not load accounts: ${error.message}`, "error"); }
+}
+
+onAuthStateChanged(auth, async user => {
+  gzDisplayLoading();
+  if (user) {
+    gzUser = user;
+    await gzCheckAuthorization();
+    return;
+  }
+  // No user yet: never redirect during INITIALIZING. Wait for auth-state
+  // settlement via the official API (auth.authStateReady()), then re-check.
+  try {
+    await auth.authStateReady();
+  } catch (_) {
+    // Older/limited SDKs: fall back to polling the current user.
+    for (let attempt = 0; attempt < 10 && !auth.currentUser; attempt += 1) {
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
+  }
+  gzUser = auth.currentUser;
+  if (!gzUser) { gzStatus = "UNAUTHORIZED"; redirectHome(); return; }
+  await gzCheckAuthorization();
 });
