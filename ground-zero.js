@@ -276,8 +276,17 @@ function redirectHome() { window.location.href = "/"; }
 
 // Ground Zero 00 is exclusively for the owner and explicitly authorized admins.
 onAuthStateChanged(auth, async user => {
+  if (!user) {
+    // On refresh, Firebase may invoke the callback before the persisted session is
+    // restored. Give the restored session a moment to appear before redirecting;
+    // a genuinely signed-out visitor still ends at the main website.
+    for (let attempt = 0; attempt < 20 && !auth.currentUser; attempt += 1) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    user = auth.currentUser;
+  }
   if (!user) { redirectHome(); return; }
-  await loadAdmins();
+  try { await loadAdmins(); } catch (_) { admins = new Map(); }
   renderAdmins();
   if (user.uid !== ownerUid && !admins.has(user.uid)) {
     setStatus("Ground Zero 00 is exclusively for the owner and authorized admins.", "error");
@@ -285,5 +294,5 @@ onAuthStateChanged(auth, async user => {
     return;
   }
   setStatus("");
-  await loadAccounts();
+  try { await loadAccounts(); } catch (error) { setStatus(`Could not load accounts: ${error.message}`, "error"); }
 });
