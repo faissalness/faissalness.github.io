@@ -1,26 +1,50 @@
-# FJ website
+# Step Inside
 
-A private, dark-mode FJ website hosted on GitHub Pages. After email/password sign-in and owner approval, the home screen reveals an animated FJ monogram with a QR code for a random Wikipedia article. The private pages include a short editorial introduction, a filterable design inspiration shelf, and a private owner-only notes page.
+A quiet, private corner of the internet.
 
-## Files
+## About FJ
 
-- `index.html`, `styles.css`, `app.js`: human check, Firebase access flow, private home, QR composition, and animations.
-- `meet.html`, `gods.html`, `notes.html`, `private-page.js`: authenticated pages, including the filterable inspiration gallery and private notes.
-- `random.html`, `random.js`: QR redirect to a selected random Wikipedia page (or Wikipedia's random article fallback).
-- `firebase-config.js`: Firebase web app values and owner UID.
-- `firestore.rules`: access-request and private notes security rules.
-- `generate_qr.py`: local QR image generation (`python -m pip install qrcode[pil]`).
-- `deploy.py`: GitHub Contents API publisher; prompts for a token without saving it.
-- `EMAIL_SETUP.md`: password email setup and free-tier email limitations.
+Step Inside is a small personal space for notes, quiet communication, and a calm digital presence. It is intentionally minimal and keeps its users in control of what they share.
 
-## Firebase and approval
+## Explore
 
-The site uses the Firebase Spark plan. Email/Password Authentication and Firestore must be enabled, the Pages hostname must be authorized, and `firestore.rules` must be published. The owner UID is configured in both `firebase-config.js` and the rules. Visitors request access, the owner reviews requests from the home screen's arrow control, and approval sends a secure password setup link.
+- **Ground Zero 00** — Owner/admin control center (owner and authorized admins only)
+- **Meet** — 01
+- **To the gods** — 02
+- **Notes** — 03
+- **PIP + Notes** — 04
+- **QR-tech** — 05
 
-The first screen contains a small local arithmetic check. It is a friction step only, not server-enforced bot protection. Nothing is stored or transmitted by this check.
+## Authentication
 
-Firebase's browser configuration values are public identifiers. Never put service account keys, email-provider secrets, or other private credentials in these files.
+Sign in with your email address and password through the main FJ website. All FJ applications — PIP, Notes, Your Notes, and the Ground Zero control center — use your main website session; there is no separate second login.
 
-## Publish
+The Ground Zero control center is exclusively available to the owner (`hDbzbNTC7pOuU2UFCjFksopbgaG3`) and explicitly authorized administrators.
 
-GitHub Pages should use the repository default branch and root folder.
+## Ground Zero 00
+
+Ground Zero is a complete administrative control center:
+
+- Register accounts, review registrations, and view PIP/Notes status
+- Approve and revoke website, PIP, and Notes access — individually or combined
+- Suspend and reactivate accounts
+- Delete accounts where supported
+- Search accounts by email, UID, and name
+
+Website and PIP/Notes authorizations are tracked as separate, independently enforceable permissions across the Cloudflare Worker and Firestore rules.
+
+## Development
+
+The FJ website is deployed on GitHub Pages (`https://faissalness.github.io`) and powered by Firebase (Firebase Authentication, Firestore) and the FJ Cloudflare Worker (`https://fj-api.jimyass.workers.dev`).
+
+To work on the code:
+
+```sh
+node tests/run_all_tests.js
+```
+
+Run the server, deploy Firestore rules with `firebase deploy --only firestore`, and the Worker with `wrangler deploy` from `backend/`.
+
+## License
+
+The website and its assets are part of the FJ project. See `LICENSE` in the repository root.
