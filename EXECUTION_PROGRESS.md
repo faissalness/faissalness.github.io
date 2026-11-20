@@ -275,4 +275,5 @@ This is the newest status and supersedes earlier statements above where they con
 ### Pages workflow retry hardening — 2026-11-20
 
 - The Pages workflow triggered by the progress-only commit `4c5fb96` failed during deployment: its retry found duplicate `github-pages` artifacts in the same workflow run. The previously deployed application commit `b89cf11` had a successful Pages deployment and its live assets were verified.
-- Updated `.github/workflows/deploy-pages.yml` to give the upload artifact a unique name per workflow run and attempt, and pass that exact name to the deploy action. This prevents a retry from selecting ambiguous artifacts. The updated workflow still requires a successful deployment run before this adjustment is marked verified.
+- Updated `.github/workflows/deploy-pages.yml` to give the upload artifact a unique name per workflow run and attempt, and pass that exact name to the deploy action. This prevents a retry from selecting ambiguous artifacts.
+- Deployment workflow `44673234340` and emulator workflow `44673235181` both succeeded for commit `f59d83e`. After deployment, Pages `/`, `/pip/`, `/qr/`, `/app.js`, and Worker root/count endpoints all returned HTTP 200; live `app.js` includes the corrected Auth scope declaration.
