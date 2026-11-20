@@ -1,0 +1,19 @@
+{
+  "name": "nemotron-super-vl",
+  "version": "1.0.0",
+  "description": "into a quite space",
+  "main": "app.js",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "@playwright/test": "^1.65.1"
+  }
+}

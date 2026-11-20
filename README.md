@@ -1,6 +1,6 @@
 # Step Inside
 
-A quiet, private corner of the internet.
+into a quite space
 
 ## About FJ
 

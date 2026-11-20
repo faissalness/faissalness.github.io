@@ -8,3 +8,7 @@ serviceAccount*.json
 *-firebase-adminsdk-*.json
 .aider*
 test_*
+node_modules/
+package-lock.json
+test-results/
+tests/screenshots/
