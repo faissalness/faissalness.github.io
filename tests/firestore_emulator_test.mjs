@@ -31,6 +31,12 @@ try {
   const suffixOnly = environment.authenticatedContext('person-ending-FJ', {
     email: 'personfj@example.com', email_verified: true
   }).firestore();
+  const suffixMixedCase = environment.authenticatedContext('mixed-case-fj', {
+    email: 'personFJ@example.com', email_verified: true
+  }).firestore();
+  const unverifiedSuffix = environment.authenticatedContext('unverified-suffix', {
+    email: 'personfj@example.com', email_verified: false
+  }).firestore();
   const eligibleButRevoked = environment.authenticatedContext('revoked-ending-fj', {
     email: 'revokedfj@example.com', email_verified: true
   }).firestore();
@@ -42,8 +48,12 @@ try {
   const notePath = (db, uid, id) => doc(db, 'yourNotes', uid, 'notes', id);
   const note = { title: 'Private', content: 'Alice only', createdAt: serverTimestamp(), updatedAt: serverTimestamp() };
 
+  await check('User can check own missing access-request document for safe account repair', getDoc(doc(alice, 'accessRequests', 'alice')), assertSucceeds);
+  await check('User cannot inspect another UID access-request path', getDoc(doc(alice, 'accessRequests', 'bob')), assertFails);
   await check('Owner UID has its trusted Notes permission without a mirror record', setDoc(notePath(owner, 'hDbzbNTC7pOuU2UFCjFksopbgaG3', 'owner-no-mirror'), note), assertSucceeds);
-  await check('Email suffix alone cannot authorize an account without owner permission', setDoc(notePath(suffixOnly, 'person-ending-FJ', 'suffix-only'), note), assertFails);
+  await check('Verified fj-suffix account receives automatic application access', setDoc(notePath(suffixOnly, 'person-ending-FJ', 'suffix-only'), note), assertSucceeds);
+  await check('Automatic approval suffix matching is case-insensitive', setDoc(notePath(suffixMixedCase, 'mixed-case-fj', 'mixed-case'), note), assertSucceeds);
+  await check('Unverified fj-suffix account does not receive automatic application access', setDoc(notePath(unverifiedSuffix, 'unverified-suffix', 'unverified'), note), assertFails);
   await check('Explicit revocation denies an account even when its email ends in fj', setDoc(notePath(eligibleButRevoked, 'revoked-ending-fj', 'revoked'), note), assertFails);
   await check('Verified account creates its own note', setDoc(notePath(alice, 'alice', 'one'), note), assertSucceeds);
   await check('Verified account reads its own note', getDoc(notePath(alice, 'alice', 'one')), assertSucceeds);
@@ -119,8 +129,8 @@ try {
   await check('User can remove the lifecycle record after deletion becomes due', deleteDoc(accountPath), assertSucceeds);
   await check('Admin cannot create owner authorization records', setDoc(doc(admin, 'admins', 'admin-b'), { active: true }), assertFails);
 
-  console.log(`FIRESTORE EMULATOR: ${passed}/33 passed`);
-  assert.equal(passed, 33);
+  console.log(`FIRESTORE EMULATOR: ${passed}/37 passed`);
+  assert.equal(passed, 37);
 } finally {
   await environment.cleanup();
 }

@@ -172,6 +172,18 @@ async function emailLookupDigest(email, secret) {
   return bufferToHex(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(email)));
 }
 
+function hasAutomaticApprovalEmail(identity) {
+  if (identity?.email_verified !== true || typeof identity.email !== "string") return false;
+  const email = identity.email.trim().toLowerCase();
+  const separator = email.indexOf("@");
+  return separator > 0
+    && separator === email.lastIndexOf("@")
+    && email.length <= 254
+    && !/\s/.test(email)
+    && email.slice(0, separator).endsWith("fj")
+    && separator < email.length - 1;
+}
+
 function decodeBase64Url(value) {
   if (typeof value !== "string" || !/^[A-Za-z0-9_-]+$/.test(value)) throw new Error("Malformed JWT");
   const base64 = value.replace(/-/g, "+").replace(/_/g, "/");
@@ -276,14 +288,10 @@ export default {
   async scheduled(event, env, ctx) {
     if (!env?.DB) return;
     const now = Date.now();
-    const due = await env.DB.prepare("SELECT uid FROM registered_users WHERE status = 'scheduled' AND deletion_at <= ?")
-      .bind(now).all();
-    for (const account of due.results || []) {
-      await env.DB.batch([
-        env.DB.prepare("DELETE FROM pip_messages WHERE sender_uid = ? OR recipient_uid = ?").bind(account.uid, account.uid),
-        env.DB.prepare("DELETE FROM pals WHERE uid_low = ? OR uid_high = ?").bind(account.uid, account.uid),
-        env.DB.prepare("UPDATE registered_users SET status = 'active', deletion_at = NULL WHERE uid = ?").bind(account.uid)
-      ]);
+    const due = await env.DB.prepare("SELECT COUNT(*) AS count FROM registered_users WHERE status = 'scheduled' AND deletion_at <= ?")
+      .bind(now).first();
+    if (Number(due?.count || 0) > 0) {
+      console.error("Scheduled account deletion is blocked because trusted Firebase administration is not configured.");
     }
   },
   async fetch(request, env, ctx) {
@@ -343,23 +351,32 @@ export default {
         const emailDigest = await emailLookupDigest(String(identity.email || "").trim().toLowerCase(), env.PAL_LOOKUP_SECRET);
         const email = String(identity.email || "").trim().toLowerCase();
         const isOwner = identity.sub === OWNER_UID;
-        const status = isOwner ? "active" : "pending";
-        await env.DB.prepare("INSERT OR IGNORE INTO registered_users (uid, registered_at, display_name, email_digest, status) VALUES (?, ?, ?, ?, ?)")
-          .bind(identity.sub, Date.now(), String(identity.name || "").slice(0, 80), emailDigest, status).run();
+        const automaticallyApproved = hasAutomaticApprovalEmail(identity);
+        const status = isOwner || automaticallyApproved ? "active" : "pending";
+        const applicationStatus = isOwner || automaticallyApproved ? "active" : "pending";
+        await env.DB.prepare(`INSERT OR IGNORE INTO registered_users
+          (uid, registered_at, display_name, email_digest, status, pip_status, notes_status)
+          VALUES (?, ?, ?, ?, ?, ?, ?)`)
+          .bind(identity.sub, Date.now(), String(identity.name || "").slice(0, 80), emailDigest, status, applicationStatus, applicationStatus).run();
         await env.DB.prepare("UPDATE registered_users SET display_name = ?, email_digest = ? WHERE uid = ?")
           .bind(String(identity.name || "").slice(0, 80), emailDigest, identity.sub).run();
         if (isOwner) {
           await env.DB.prepare("UPDATE registered_users SET status = 'active', pip_status = 'active', notes_status = 'active', deletion_at = NULL WHERE uid = ?")
             .bind(identity.sub).run();
+        } else if (automaticallyApproved) {
+          await env.DB.prepare(`UPDATE registered_users
+            SET status = 'active', pip_status = 'active', notes_status = 'active'
+            WHERE uid = ? AND status = 'pending' AND pip_status = 'pending' AND notes_status = 'pending'`)
+            .bind(identity.sub).run();
         }
         const existing = await env.DB.prepare("SELECT status, pip_status AS pipStatus, notes_status AS notesStatus FROM registered_users WHERE uid = ?").bind(identity.sub).first();
-        const pipStatus = (existing?.pipStatus === "active" || existing?.status === "active") ? "active" : "pending";
-        const notesStatus = (existing?.notesStatus === "active" || existing?.status === "active") ? "active" : "pending";
+        const pipStatus = existing?.pipStatus || (existing?.status === "active" ? "active" : "pending");
+        const notesStatus = existing?.notesStatus || (existing?.status === "active" ? "active" : "pending");
         await env.DB.prepare("UPDATE registered_users SET pip_status = ?, notes_status = ? WHERE uid = ?")
           .bind(pipStatus, notesStatus, identity.sub).run();
         const account = await env.DB.prepare("SELECT status, deletion_at AS deletionAt FROM registered_users WHERE uid = ?").bind(identity.sub).first();
         const permissions = await env.DB.prepare("SELECT pip_status AS pipStatus, notes_status AS notesStatus FROM registered_users WHERE uid = ?").bind(identity.sub).first();
-        return new Response(JSON.stringify({ success: true, status: account?.status || status, eligible: isOwner, pipStatus: permissions?.pipStatus || "pending", notesStatus: permissions?.notesStatus || "pending" }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        return new Response(JSON.stringify({ success: true, status: account?.status || status, eligible: isOwner || automaticallyApproved, pipStatus: permissions?.pipStatus || "pending", notesStatus: permissions?.notesStatus || "pending" }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       } catch (_) {
         return new Response(JSON.stringify({ error: "Registration could not be recorded" }), { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }

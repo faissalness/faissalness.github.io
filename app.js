@@ -22,6 +22,8 @@ if (publicUserCount) {
 const palette = ["#d2ff5a", "#ff70b7", "#86d9ff", "#f2f0e9", "#c6a7ff", "#ffb37b"];
 let requestInProgress = false;
 let unsubscribeRequests;
+let auth = null;
+let db = null;
 
 const HUMAN_CHECK_KEY = "fj-human-check";
 function humanTabId() {
@@ -385,8 +387,8 @@ if (!configured) {
   document.body.classList.remove("auth-pending");
 } else {
   const app = initializeApp(firebaseConfig);
-  const auth = getAuth(app);
-  const db = getFirestore(app);
+  auth = getAuth(app);
+  db = getFirestore(app);
 
   const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 

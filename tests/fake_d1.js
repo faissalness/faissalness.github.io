@@ -72,12 +72,18 @@ class FakeD1 {
       },
       async run() {
         if (sql.includes("INSERT OR IGNORE INTO registered_users")) {
-          if (!db.users.has(args[0])) db.users.set(args[0], { uid: args[0], registeredAt: args[1], displayName: args[2], status: args[4], pipStatus: "pending", notesStatus: "pending", deletionAt: null });
+          if (!db.users.has(args[0])) db.users.set(args[0], { uid: args[0], registeredAt: args[1], displayName: args[2], status: args[4], pipStatus: args[5] || "pending", notesStatus: args[6] || "pending", deletionAt: null });
         } else if (sql.includes("UPDATE registered_users SET display_name")) {
           const user = db.users.get(args[1]); if (user) user.displayName = args[0];
         } else if (sql.includes("UPDATE registered_users SET status = 'active', pip_status = 'active'")) {
           const user = db.users.get(args[0]);
           if (user) { user.status = "active"; user.pipStatus = "active"; user.notesStatus = "active"; user.deletionAt = null; }
+        } else if (sql.includes("SET status = 'active', pip_status = 'active', notes_status = 'active'")
+          && sql.includes("AND status = 'pending' AND pip_status = 'pending'")) {
+          const user = db.users.get(args[0]);
+          if (user?.status === "pending" && user.pipStatus === "pending" && user.notesStatus === "pending") {
+            user.status = "active"; user.pipStatus = "active"; user.notesStatus = "active";
+          }
         } else if (sql.includes("UPDATE registered_users SET pip_status = ?, notes_status = ?")) {
           const user = db.users.get(args[2]);
           if (user) { user.pipStatus = args[0]; user.notesStatus = args[1]; }

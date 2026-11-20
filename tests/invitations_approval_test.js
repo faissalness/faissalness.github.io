@@ -85,104 +85,106 @@ console.log(" PASS: Atomic invitation redemption and UID binding strictly preven
 console.log("\n3. Testing Approval Trigger Handler with Federated Account & Idempotency...");
 (async () => {
   let docUpdates = {};
-  const mockDocRef = {
-    update: async (data) => {
-      Object.assign(docUpdates, data);
+  const savedDocs = new Map();
+  const mockDocRef = path => ({
+    path,
+    update: async data => {
+      if (path.startsWith('accessRequests/')) Object.assign(docUpdates, data);
+      savedDocs.set(path, { ...(savedDocs.get(path) || {}), ...data });
     }
-  };
+  });
 
   const mockAdmin = {
     firestore: () => ({
-      doc: () => mockDocRef
+      doc: mockDocRef,
+      batch: () => {
+        const writes = [];
+        return {
+          set: (...args) => writes.push(args),
+          update: (...args) => writes.push(args),
+          commit: async () => {
+            for (const [ref, data] of writes) {
+              savedDocs.set(ref.path, { ...(savedDocs.get(ref.path) || {}), ...data });
+              if (ref.path.startsWith('accessRequests/')) Object.assign(docUpdates, data);
+            }
+          }
+        };
+      }
     }),
     firestoreFieldValue: {
       serverTimestamp: () => new Date().toISOString()
     },
     auth: () => ({
-      getUserByEmail: async (email) => {
-        if (email === "federated@example.com") {
-          return {
-            uid: "fed_uid",
-            email,
-            providerData: [{ providerId: "google.com" }] // Federated only, no password provider!
-          };
-        }
-        if (email === "standard@example.com") {
-          return {
-            uid: "standard_uid",
-            email,
-            providerData: [{ providerId: "password" }]
-          };
-        }
-        if (email === "ambiguous@example.com") {
-          return {
-            uid: "ambig_uid",
-            email,
-            providerData: [{ providerId: "password" }]
-          };
-        }
+      getUser: async uid => {
+        if (uid === "req_std") return { uid, email: "standardfj@example.com", emailVerified: true };
+        if (uid === "req_unverified") return { uid, email: "standardfj@example.com", emailVerified: false };
         const err = new Error("User not found");
         err.code = "auth/user-not-found";
         throw err;
-      },
-      generatePasswordResetLink: async (email) => {
-        if (email === "ambiguous@example.com") {
-          const timeoutErr = new Error("Network timeout contacting identity toolkit");
-          timeoutErr.code = "auth/network-timeout";
-          throw timeoutErr;
-        }
-        return `https://auth.example.com/reset?email=${encodeURIComponent(email)}`;
       }
     })
   };
   mockAdmin.firestore.FieldValue = mockAdmin.firestoreFieldValue;
   setAdminInstance(mockAdmin);
 
-  // Test Case A: Federated-only account
+  // Test Case A: Non-eligible addresses remain pending.
   docUpdates = {};
   await handleAccessRequest({
     type: 'create',
     data: {
       doc: {
         id: 'req_fed',
-        data: () => ({ email: 'federated@example.comfj', status: 'pending' })
+        data: () => ({ uid: 'req_fed', email: 'federated@example.com', status: 'pending' })
       }
     }
   });
-  assert.strictEqual(docUpdates.status, 'ACTION_REQUIRED', "Federated-only account must receive ACTION_REQUIRED");
-  assert.strictEqual(docUpdates.deliveryStatus, 'skipped');
-  console.log(" PASS: Federated-only accounts receive ACTION_REQUIRED instead of false success.");
+  assert.deepStrictEqual(docUpdates, {});
+  console.log(" PASS: Non-eligible addresses remain pending.");
 
-  // Test Case B: Ambiguous delivery
+  // Test Case B: A missing identity is rejected.
   docUpdates = {};
   await handleAccessRequest({
     type: 'create',
     data: {
       doc: {
-        id: 'req_ambig',
-        data: () => ({ email: 'ambiguous@example.comfj', status: 'pending' })
+        id: 'req_missing',
+        data: () => ({ uid: 'req_missing', email: 'missingfj@example.com', status: 'pending' })
       }
     }
   });
-  assert.strictEqual(docUpdates.deliveryStatus, 'DELIVERY_UNKNOWN', "Temporary network failure must record DELIVERY_UNKNOWN");
-  console.log(" PASS: Ambiguous temporary failures safely recorded as DELIVERY_UNKNOWN without blind resend.");
+  assert.strictEqual(docUpdates.status, 'rejected');
+  assert.strictEqual(docUpdates.deliveryStatus, 'failed');
+  console.log(" PASS: Requests without a matching Firebase account are rejected.");
 
-  // Test Case C: Standard account with idempotency key
+  // Test Case C: A verified Firebase identity with a matching UID and email is approved.
   docUpdates = {};
   await handleAccessRequest({
     type: 'create',
     data: {
       doc: {
         id: 'req_std',
-        data: () => ({ email: 'standard@example.comfj', status: 'pending', approvalVersion: 1 })
+        data: () => ({ uid: 'req_std', email: 'standardFJ@example.com', status: 'pending' })
       }
     }
   });
   assert.strictEqual(docUpdates.status, 'approved');
-  assert.strictEqual(docUpdates.deliveryStatus, 'sent');
-  assert.strictEqual(docUpdates.firebaseAccepted, true);
-  assert.strictEqual(docUpdates.idempotencyKey, 'req_std_v1_pwd_reset');
-  console.log(" PASS: Standard approval creates durable email job with unique idempotency key.");
+  assert.strictEqual(docUpdates.deliveryStatus, 'not_required');
+  assert.strictEqual(savedDocs.get('users/req_std').approved, true);
+  console.log(" PASS: Verified suffix identity is approved without false email-delivery claims.");
+
+  docUpdates = {};
+  await handleAccessRequest({
+    type: 'create',
+    data: {
+      doc: {
+        id: 'req_unverified',
+        data: () => ({ uid: 'req_unverified', email: 'standardfj@example.com', status: 'pending' })
+      }
+    }
+  });
+  assert.strictEqual(docUpdates.status, 'pending');
+  assert.strictEqual(savedDocs.has('users/req_unverified'), false);
+  console.log(" PASS: Unverified identities cannot be automatically approved.");
 
   console.log("\n=== ALL INVITATIONS & APPROVAL TESTS PASSED SUCCESSFULLY! ===");
 })();

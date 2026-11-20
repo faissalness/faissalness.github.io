@@ -51,11 +51,18 @@ service cloud.firestore {
         || get(/databases/$(database)/documents/yourNotes/$(userUid)).data.deletionStatus == 'active';
     }
 
+    function automaticApprovalEmail(userUid) {
+      return verifiedAccount()
+        && request.auth.uid == userUid
+        && request.auth.token.email is string
+        && request.auth.token.email.matches('^[^@]+[fF][jJ]@[^@]+$');
+    }
+
     function applicationPermissionActive(userUid, appName) {
       return owner() || (exists(/databases/$(database)/documents/applicationPermissions/$(userUid))
         ? appName in get(/databases/$(database)/documents/applicationPermissions/$(userUid)).data
           && get(/databases/$(database)/documents/applicationPermissions/$(userUid)).data[appName] == 'active'
-        : false);
+        : automaticApprovalEmail(userUid));
     }
 
     function personalDeletionReady(userUid) {
@@ -196,7 +203,7 @@ service cloud.firestore {
         && request.resource.data.deliveryStatus == 'pending';
 
       allow read: if owner()
-        || (signedIn() && resource.data.uid == request.auth.uid);
+        || (signedIn() && (request.auth.uid == requestId || resource.data.uid == request.auth.uid));
 
       allow update: if owner()
         && request.resource.data.diff(resource.data)

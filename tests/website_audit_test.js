@@ -73,8 +73,15 @@ assert.ok(fs.readFileSync(path.join(ROOT, '.github', 'workflows', 'deploy-pages.
   'Pages workflow must publish the clean /qr/ route');
 const pipPage = fs.readFileSync(path.join(ROOT, 'pip.html'), 'utf8');
 const pipScript = fs.readFileSync(path.join(ROOT, 'pip.js'), 'utf8');
-assert.ok(pipPage.includes('PIP and<br><span>Your Notes.</span>') && pipScript.includes('Account already exists.') && pipScript.includes('sendEmailVerification'),
-  'PIP and Notes 04 must expose registration, verified email, reset, and duplicate-account handling');
+const appScript = fs.readFileSync(path.join(ROOT, 'app.js'), 'utf8');
+assert.ok(appScript.includes('let auth = null;') && appScript.includes('auth = getAuth(app)'),
+  'The shared site sign-out handler must close over the initialized Firebase Auth instance');
+assert.ok(pipPage.includes('PIP and<br><span>Your Notes.</span>')
+  && pipScript.includes('This account already exists.')
+  && pipScript.includes('Forgot password to recover access')
+  && pipScript.includes('ensureFirestoreAccountRecords')
+  && pipScript.includes('sendEmailVerification'),
+  'PIP and Notes 04 must provide idempotent account setup, verified email, reset, and duplicate-account recovery');
 assert.ok(pipPage.includes('id="pip-returning"') && pipPage.includes('id="pip-returning-password"')
   && pipScript.includes('signInWithEmailAndPassword(auth, email, passwordInput.value)')
   && pipPage.includes('id="pip-switch-account"'),

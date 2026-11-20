@@ -62,6 +62,30 @@ async function palApi(path, options = {}) {
   return data;
 }
 
+async function ensureFirestoreAccountRecords(user) {
+  const profileRef = doc(db, "users", user.uid);
+  const requestRef = doc(db, "accessRequests", user.uid);
+  const [profile, accessRequest] = await Promise.all([getDoc(profileRef), getDoc(requestRef)]);
+  const writes = [];
+  if (!profile.exists()) {
+    writes.push(setDoc(profileRef, {
+      email: user.email || "",
+      approved: false,
+      createdAt: serverTimestamp()
+    }));
+  }
+  if (!accessRequest.exists()) {
+    writes.push(setDoc(requestRef, {
+      uid: user.uid,
+      email: user.email || "",
+      status: "pending",
+      deliveryStatus: "pending",
+      createdAt: serverTimestamp()
+    }));
+  }
+  await Promise.all(writes);
+}
+
 function addTextNode(parent, text, className) {
   const node = document.createElement("p");
   if (className) node.className = className;
@@ -715,30 +739,27 @@ $("#pip-register-form").addEventListener("submit", async event => {
   event.preventDefault();
   const button = event.currentTarget.querySelector('button[type="submit"]');
   button.disabled = true;
+  let createdUser = null;
   try {
     const name = $("#pip-register-name").value.trim();
     const email = $("#pip-register-email").value.trim().toLowerCase();
     const credential = await createUserWithEmailAndPassword(auth, email, $("#pip-register-password").value);
+    createdUser = credential.user;
     await updateProfile(credential.user, { displayName: name });
     rememberPipEmail(email);
-    await setDoc(doc(db, "users", credential.user.uid), {
-      email,
-      approved: false,
-      createdAt: serverTimestamp()
-    });
-    await setDoc(doc(db, "accessRequests", credential.user.uid), {
-      uid: credential.user.uid,
-      email,
-      status: "pending",
-      deliveryStatus: "pending",
-      createdAt: serverTimestamp()
-    });
     $("#pip-welcome").textContent = name ? `${name}'s Notes.` : "Your Notes.";
     await sendEmailVerification(credential.user, { url: AUTH_ACTION_URL, handleCodeInApp: false });
+    await ensureFirestoreAccountRecords(credential.user);
     status("Check your inbox for the verification link to activate Your Notes.", "success");
   } catch (error) {
-    if (error.code === "auth/email-already-in-use") status("Account already exists.", "error");
+    if (error.code === "auth/email-already-in-use") {
+      $("#pip-login-email").value = $("#pip-register-email").value.trim().toLowerCase();
+      status("This account already exists. Sign in with its current password, or use Forgot password to recover access.", "error");
+    }
     else if (error.code === "auth/weak-password") status("Use a password with at least 8 characters.", "error");
+    else if (error.code === "auth/invalid-email") status("Enter a valid email address.", "error");
+    else if (error.code === "auth/operation-not-allowed") status("Email and password sign-in is unavailable. Contact the site owner.", "error");
+    else if (createdUser) status("The account was created, but setup did not finish. Sign in after verifying your email; you can resend the verification link from the next screen.", "error");
     else status("Could not create the account. Check the details and try again.", "error");
   } finally { button.disabled = false; }
 });
@@ -751,13 +772,19 @@ $("#pip-login-form").addEventListener("submit", async event => {
     const email = $("#pip-login-email").value.trim().toLowerCase();
     await signInWithEmailAndPassword(auth, email, $("#pip-login-password").value);
     rememberPipEmail(email);
+  } catch (error) {
+    if (error.code === "auth/too-many-requests") status("Too many sign-in attempts. Wait a little, then try again or use Forgot password.", "error");
+    else if (error.code === "auth/network-request-failed") status("Sign-in could not reach Firebase. Check your connection and try again.", "error");
+    else if (error.code === "auth/user-disabled") status("This account is disabled. Contact the site owner for help.", "error");
+    else if (["auth/invalid-credential", "auth/wrong-password", "auth/user-not-found"].includes(error.code)) {
+      status("Email or password did not match. If this account is unverified, sign in with the correct password to resend verification; use Forgot password if needed.", "error");
+    } else status("Sign-in could not be completed. Try again, or use Forgot password to recover access.", "error");
   }
-  catch { status("Sign-in failed. Check your email and password, and confirm the account is verified.", "error"); }
   finally { button.disabled = false; }
 });
 
 $("#pip-reset").addEventListener("click", async () => {
-  const email = $("#pip-login-email").value.trim();
+  const email = $("#pip-login-email").value.trim().toLowerCase();
   if (!email) return status("Enter your email address first.", "info");
   try { await sendPasswordResetEmail(auth, email, { url: AUTH_ACTION_URL, handleCodeInApp: false }); }
   catch { /* Keep the response indistinguishable to reduce account enumeration. */ }
@@ -881,6 +908,7 @@ async function showPrivateNotes(user) {
     return;
   }
   try {
+    await ensureFirestoreAccountRecords(user);
     const registration = await palApiForUser(user, "/api/users/register", { method: "POST", body: "{}" });
     if (registration.status !== "active" || registration.pipStatus !== "active") {
       activeUser = null;

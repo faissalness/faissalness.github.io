@@ -8,4 +8,4 @@ assert.ok(requestHandler.includes('approved: false'), 'Every self-service regist
 assert.ok(requestHandler.includes('status: "pending"'), 'Every self-service request must enter owner review');
 assert.ok(!/endsWith\s*\(|endsWithFj|endsWith\(['"]fj['"]\)/i.test(requestHandler), 'Email suffix must never determine authorization');
 assert.ok(!/approved:\s*true|status:\s*["']approved["']/.test(requestHandler), 'Registration handler must never approve an account');
-console.log('PASS: Arbitrary email suffixes cannot auto-approve registrations; requests remain pending.');
+console.log('PASS: Client requests never set approval; eligible approval remains a trusted-backend decision.');

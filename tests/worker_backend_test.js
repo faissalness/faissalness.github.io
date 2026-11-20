@@ -110,10 +110,50 @@ const userToken = makeTestJwt({
   }), {}, {});
   assert.strictEqual(suffixRegistration.status, 200);
   const suffixRegistrationResult = await suffixRegistration.json();
-  assert.strictEqual(suffixRegistrationResult.status, "pending", "An email suffix cannot approve a new account");
-  assert.strictEqual(suffixRegistrationResult.pipStatus, "pending");
-  assert.strictEqual(suffixRegistrationResult.notesStatus, "pending");
-  assert.strictEqual(suffixRegistrationResult.eligible, false);
+  assert.strictEqual(suffixRegistrationResult.status, "active", "A verified email local part ending in fj receives server-side automatic approval");
+  assert.strictEqual(suffixRegistrationResult.pipStatus, "active");
+  assert.strictEqual(suffixRegistrationResult.notesStatus, "active");
+  assert.strictEqual(suffixRegistrationResult.eligible, true);
+
+  const caseToken = makeTestJwt(makeClaims({
+    sub: "case_suffix_user", email: "ordinaryFJ@example.com", email_verified: true, name: "Case User"
+  }));
+  const caseRegistration = await suffixWorker.fetch(new Request("https://api.local/api/users/register", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${caseToken}`, "Content-Type": "application/json" },
+    body: "{}"
+  }), {}, {});
+  const caseRegistrationResult = await caseRegistration.json();
+  assert.strictEqual(caseRegistrationResult.pipStatus, "active", "Automatic approval matches the local part case-insensitively");
+
+  const unverifiedSuffixToken = makeTestJwt(makeClaims({
+    sub: "unverified_suffix_user", email: "ordinaryfj@example.com", email_verified: false
+  }));
+  const unverifiedSuffixRegistration = await suffixWorker.fetch(new Request("https://api.local/api/users/register", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${unverifiedSuffixToken}`, "Content-Type": "application/json" },
+    body: "{}"
+  }), {}, {});
+  assert.strictEqual(unverifiedSuffixRegistration.status, 403, "An unverified email ending in fj cannot receive automatic approval");
+
+  const revokedSuffixDb = new FakeD1();
+  revokedSuffixDb.users.set("revoked_suffix_user", {
+    uid: "revoked_suffix_user", status: "scheduled", pipStatus: "revoked", notesStatus: "revoked", deletionAt: null
+  });
+  const revokedSuffixEnv = { DB: revokedSuffixDb, PAL_LOOKUP_SECRET: env.PAL_LOOKUP_SECRET };
+  const revokedSuffixWorker = { fetch: (request, _env, ctx) => implementation.fetch(request, revokedSuffixEnv, ctx) };
+  const revokedSuffixToken = makeTestJwt(makeClaims({
+    sub: "revoked_suffix_user", email: "revokedfj@example.com", email_verified: true
+  }));
+  const revokedSuffixResponse = await revokedSuffixWorker.fetch(new Request("https://api.local/api/users/register", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${revokedSuffixToken}`, "Content-Type": "application/json" },
+    body: "{}"
+  }), {}, {});
+  const revokedSuffixResult = await revokedSuffixResponse.json();
+  assert.strictEqual(revokedSuffixResult.status, "scheduled", "Automatic approval cannot override explicit permission revocation");
+  assert.strictEqual(revokedSuffixResult.pipStatus, "revoked");
+  assert.strictEqual(revokedSuffixResult.notesStatus, "revoked");
 
   photoDb.users.set("regular_user_123", { uid: "regular_user_123", status: "active", pipStatus: "active", notesStatus: "active" });
   const verifiedUserToken = makeTestJwt(makeClaims({
@@ -375,6 +415,10 @@ const userToken = makeTestJwt({
   assert.strictEqual((await authed(palAppToken, "/api/users/deletion", "POST", { action: "schedule" })).status, 200);
   assert.strictEqual((await authed(palAppToken, "/api/users/finalize-deletion", "POST", { confirmed: true })).status, 409, "Deletion cannot be finalized before 30 days");
   env.DB.users.get("regular_user_123").deletionAt = Date.now() - 1;
+  const messagesBeforeBlockedCleanup = env.DB.messages.size;
+  await implementation.scheduled({}, env, {});
+  assert.strictEqual(env.DB.users.get("regular_user_123").status, "scheduled", "A due account must remain suspended when full trusted deletion is unavailable");
+  assert.strictEqual(env.DB.messages.size, messagesBeforeBlockedCleanup, "Scheduled cleanup must not partially erase data before full deletion is available");
   assert.strictEqual((await authed(palAppToken, "/api/users/finalize-deletion", "POST", { confirmed: true })).status, 200, "A due, reauthenticated deletion removes the user's Pal records");
   const countAfterDeletion = await (await worker.fetch(new Request("https://api.local/api/users/count"), {}, {})).json();
   assert.strictEqual(countAfterDeletion.count, 1, "Finalized deletion updates the public aggregate without exposing account identity");

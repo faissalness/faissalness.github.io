@@ -65,7 +65,7 @@ test('three independent browser accounts verify email, persist sessions, and use
   const browserErrors = [];
 
   try {
-    for (const account of accounts) {
+    for (const [accountIndex, account] of accounts.entries()) {
       const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
       const page = await context.newPage();
       let storedPhoto = null;
@@ -113,6 +113,7 @@ test('three independent browser accounts verify email, persist sessions, and use
       if (!(await page.locator('#pip-verify').isVisible())) {
         throw new Error(`Registration did not reach email verification: ${await page.locator('#pip-status').textContent()} ${browserErrors.join(' | ')} ${pageErrors.join(' | ')}`);
       }
+      await expect(page.locator('#pip-register-form button[type=submit]')).toBeEnabled();
 
       await expect.poll(() => latestActionLink(account.email, 'verifyEmail'), { timeout: 15_000 }).not.toBeNull();
       const actionLink = latestActionLink(account.email, 'verifyEmail');
@@ -120,12 +121,40 @@ test('three independent browser accounts verify email, persist sessions, and use
       const verificationCode = actionUrl.searchParams.get('oobCode');
       expect(verificationCode).toBeTruthy();
       expect(actionUrl.searchParams.get('continueUrl')).toBe(`${origin}/pip/`);
-      await page.evaluate(async code => {
-        const { getApps } = await import('https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js');
-        const { applyActionCode, getAuth } = await import('https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js');
-        await applyActionCode(getAuth(getApps().find(app => app.name === 'FJYourNotes')), code);
-      }, verificationCode);
-      await page.locator('#pip-check-verified').click();
+      if (accountIndex === 0) {
+        await page.locator('#pip-verify-sign-out').click();
+        await expect(page.locator('#pip-returning')).toBeVisible();
+        await page.locator('#pip-returning-password').fill(account.password);
+        await page.locator('#pip-returning-password').press('Enter');
+        await expect(page.locator('#pip-verify')).toBeVisible();
+        await page.locator('#pip-verify-sign-out').click();
+        await page.locator('#pip-switch-account').click();
+
+        await page.locator('#pip-register-name').fill(account.name);
+        await page.locator('#pip-register-email').fill(account.email);
+        await page.locator('#pip-register-password').fill('DifferentPass123!');
+        await page.locator('#pip-register-form button[type=submit]').click();
+        await expect(page.locator('#pip-status')).toContainText('This account already exists. Sign in with its current password');
+
+        await page.evaluate(async code => {
+          const { getApps } = await import('https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js');
+          const { applyActionCode, getAuth } = await import('https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js');
+          await applyActionCode(getAuth(getApps().find(app => app.name === 'FJYourNotes')), code);
+        }, verificationCode);
+        await page.locator('#pip-login-email').fill(account.email);
+        await page.locator('#pip-login-password').fill('WrongPassword!');
+        await page.locator('#pip-login-form button[type=submit]').click();
+        await expect(page.locator('#pip-status')).toContainText('Email or password did not match');
+        await page.locator('#pip-login-password').fill(account.password);
+        await page.locator('#pip-login-form button[type=submit]').click();
+      } else {
+        await page.evaluate(async code => {
+          const { getApps } = await import('https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js');
+          const { applyActionCode, getAuth } = await import('https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js');
+          await applyActionCode(getAuth(getApps().find(app => app.name === 'FJYourNotes')), code);
+        }, verificationCode);
+        await page.locator('#pip-check-verified').click();
+      }
       await expect(page.locator('#pip-notes')).toBeVisible();
 
       const persistedUid = await page.evaluate(async () => {

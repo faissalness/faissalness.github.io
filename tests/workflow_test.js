@@ -16,56 +16,60 @@ const crypto = require('crypto');
 
 console.log("=== FJ WEBSITE VERIFICATION SUITE ===\n");
 
-// 1. Valid and invalid 'fj' email suffixes
-console.log("1. Testing 'fj' email suffix normalization and validation...");
-assert.strictEqual(validateAndNormalizeEmail("user@example.comfj"), "user@example.com");
-assert.strictEqual(validateAndNormalizeEmail("USER@EXAMPLE.COMfj"), "user@example.com");
-assert.strictEqual(validateAndNormalizeEmail("john.doe+filter@domain.co.ukfj"), "john.doe+filter@domain.co.uk");
+// 1. Valid and invalid verified-email local parts
+console.log("1. Testing verified local-part eligibility...");
+assert.strictEqual(validateAndNormalizeEmail("userfj@example.com"), "userfj@example.com");
+assert.strictEqual(validateAndNormalizeEmail("USERFJ@EXAMPLE.COM"), "userfj@example.com");
+assert.strictEqual(validateAndNormalizeEmail("john.doe+filterFJ@domain.co.uk"), "john.doe+filterfj@domain.co.uk");
+assert.strictEqual(validateAndNormalizeEmail("user@example.comfj"), null, "A domain suffix cannot qualify");
 assert.strictEqual(validateAndNormalizeEmail("invalidfj"), null, "Invalid email without domain should be rejected");
 assert.strictEqual(validateAndNormalizeEmail("user@invalid"), null, "Missing TLD should be rejected");
-assert.strictEqual(validateAndNormalizeEmail("user@example.com"), null, "Email without fj suffix should return null");
+assert.strictEqual(validateAndNormalizeEmail("user@example.com"), null, "Local part without fj suffix should not qualify");
 assert.strictEqual(validateAndNormalizeEmail(""), null, "Empty email should return null");
 assert.strictEqual(validateAndNormalizeEmail(null), null, "Null email should return null");
-console.log(" PASS: Email normalization and validation verified.\n");
+console.log(" PASS: Eligibility requires a valid email local part ending in fj.\n");
 
 // 2. Pending requests for non-suffix emails & Trigger handler
 console.log("2. Testing access request trigger handler logic...");
 (async () => {
   let docUpdates = {};
-  const mockDocRef = {
-    update: async (data) => {
-      Object.assign(docUpdates, data);
+  const savedDocs = new Map();
+  const mockDocRef = path => ({
+    path,
+    update: async data => {
+      if (path.startsWith('accessRequests/')) Object.assign(docUpdates, data);
+      savedDocs.set(path, { ...(savedDocs.get(path) || {}), ...data });
     }
-  };
-
-  // Test Non-fj email (remains pending)
-  docUpdates = {};
-  const pendingEvent = {
-    type: 'create',
-    data: {
-      doc: {
-        id: 'test_pending_uid',
-        data: () => ({ email: 'visitor@example.com', status: 'pending' })
-      }
-    }
-  };
-
-  // Mock admin SDK for unit testing
+  });
   const mockAdmin = {
     firestore: () => ({
-      doc: (path) => mockDocRef
+      doc: mockDocRef,
+      batch: () => {
+        const writes = [];
+        return {
+          set: (...args) => writes.push(['set', ...args]),
+          update: (...args) => writes.push(['update', ...args]),
+          commit: async () => {
+            for (const [, ref, data] of writes) {
+              savedDocs.set(ref.path, { ...(savedDocs.get(ref.path) || {}), ...data });
+              if (ref.path.startsWith('accessRequests/')) Object.assign(docUpdates, data);
+            }
+          }
+        };
+      }
     }),
     firestoreFieldValue: {
       serverTimestamp: () => new Date().toISOString()
     },
     auth: () => ({
-      getUserByEmail: async (email) => {
-        if (email === 'exists@example.com') return { uid: 'uid_123', email };
+      getUser: async uid => {
+        if (uid === 'test_valid_uid') return { uid, email: 'existsfj@example.com', emailVerified: true };
+        if (uid === 'test_unverified_uid') return { uid, email: 'existsfj@example.com', emailVerified: false };
+        if (uid === 'test_mismatch_uid') return { uid, email: 'different@example.com', emailVerified: true };
         const err = new Error('User not found');
         err.code = 'auth/user-not-found';
         throw err;
-      },
-      generatePasswordResetLink: async (email) => `https://auth.example.com/reset?email=${encodeURIComponent(email)}`
+      }
     })
   };
   mockAdmin.firestore.FieldValue = mockAdmin.firestoreFieldValue;
@@ -73,79 +77,58 @@ console.log("2. Testing access request trigger handler logic...");
   const { setAdminInstance } = require('../functions/access-approval-trigger.js');
   setAdminInstance(mockAdmin);
 
-  await handleAccessRequest(pendingEvent);
-  assert.strictEqual(docUpdates.status, 'pending');
-  assert.strictEqual(docUpdates.deliveryStatus, 'pending');
+  await handleAccessRequest({
+    type: 'create',
+    data: { doc: { id: 'test_pending_uid', data: () => ({ uid: 'test_pending_uid', email: 'visitor@example.com', status: 'pending' }) } }
+  });
+  assert.deepStrictEqual(docUpdates, {}, "Non-fj requests remain pending without side effects");
   console.log(" PASS: Non-fj email correctly kept as pending.");
 
-  // Test Invalid fj email (rejected)
   docUpdates = {};
-  const invalidFjEvent = {
+  await handleAccessRequest({
     type: 'create',
-    data: {
-      doc: {
-        id: 'test_invalid_uid',
-        data: () => ({ email: 'broken-emailfj', status: 'pending' })
-      }
-    }
-  };
-  await handleAccessRequest(invalidFjEvent);
+    data: { doc: { id: 'test_invalid_uid', data: () => ({ uid: 'test_invalid_uid', email: 'broken-emailfj', status: 'pending' }) } }
+  });
   assert.strictEqual(docUpdates.status, 'rejected');
   assert.strictEqual(docUpdates.deliveryStatus, 'failed');
-  console.log(" PASS: Invalid email after stripping fj correctly rejected.");
+  console.log(" PASS: Malformed request is rejected.");
 
-  // Test Valid fj email with existing Auth account (approved & reset link generated)
   docUpdates = {};
-  const validFjEvent = {
+  await handleAccessRequest({
     type: 'create',
-    data: {
-      doc: {
-        id: 'test_valid_uid',
-        data: () => ({ email: 'exists@example.comfj', status: 'pending' })
-      }
-    }
-  };
-  await handleAccessRequest(validFjEvent);
+    data: { doc: { id: 'test_valid_uid', data: () => ({ uid: 'test_valid_uid', email: 'existsFJ@example.com', status: 'pending' }) } }
+  });
   assert.strictEqual(docUpdates.status, 'approved');
-  assert.strictEqual(docUpdates.deliveryStatus, 'sent');
-  assert.strictEqual(docUpdates.normalizedEmail, 'exists@example.com');
-  console.log(" PASS: Valid fj email automatically approved and reset link sent.");
+  assert.strictEqual(docUpdates.deliveryStatus, 'not_required');
+  assert.strictEqual(docUpdates.approvalSource, 'verified_fj_email');
+  assert.strictEqual(savedDocs.get('users/test_valid_uid').approved, true);
+  console.log(" PASS: Verified fj identity receives application approval only.");
 
-  // Test Missing / Ineligible Auth Account (rejected with clear message)
   docUpdates = {};
-  const missingAccountEvent = {
+  await handleAccessRequest({
     type: 'create',
-    data: {
-      doc: {
-        id: 'test_missing_uid',
-        data: () => ({ email: 'nonexistent@example.comfj', status: 'pending' })
-      }
-    }
-  };
-  await handleAccessRequest(missingAccountEvent);
-  assert.strictEqual(docUpdates.status, 'rejected');
-  assert.strictEqual(docUpdates.deliveryStatus, 'failed');
-  assert.strictEqual(docUpdates.error, 'Firebase Authentication account does not exist');
-  console.log(" PASS: Ineligible/missing Auth account safely rejected without failing silently.");
+    data: { doc: { id: 'test_unverified_uid', data: () => ({ uid: 'test_unverified_uid', email: 'existsfj@example.com', status: 'pending' }) } }
+  });
+  assert.strictEqual(docUpdates.status, 'pending');
+  assert.match(docUpdates.error, /Verified Firebase email/);
+  assert.strictEqual(savedDocs.has('users/test_unverified_uid'), false);
 
-  // Test Duplicate event / page refresh / retry prevention
   docUpdates = {};
-  const duplicateEvent = {
+  await handleAccessRequest({
     type: 'create',
-    data: {
-      doc: {
-        id: 'test_duplicate_uid',
-        data: () => ({
-          email: 'exists@example.comfj',
-          status: 'approved',
-          deliveryStatus: 'sent' // already sent
-        })
-      }
-    }
-  };
-  await handleAccessRequest(duplicateEvent);
-  assert.deepStrictEqual(docUpdates, {}, "No duplicate updates or emails should be dispatched if deliveryStatus is sent");
-  console.log(" PASS: Duplicate events and page refreshes safely prevented.");
+    data: { doc: { id: 'test_mismatch_uid', data: () => ({ uid: 'test_mismatch_uid', email: 'existsfj@example.com', status: 'pending' }) } }
+  });
+  assert.strictEqual(docUpdates.status, 'pending');
+  assert.strictEqual(savedDocs.has('users/test_mismatch_uid'), false);
+  console.log(" PASS: Unverified and email-mismatched identities remain unapproved.");
+
+  docUpdates = {};
+  await handleAccessRequest({
+    type: 'create',
+    data: { doc: { id: 'test_duplicate_uid', data: () => ({ uid: 'test_duplicate_uid', email: 'existsfj@example.com', status: 'approved', deliveryStatus: 'sent' }) } }
+  });
+  assert.deepStrictEqual(docUpdates, {}, "Non-pending requests must remain unchanged");
+  console.log(" PASS: Duplicate events and retries are idempotent.");
 
   // 3. Security Boundary: Owner and Admin Authorization & Revocation
   console.log("\n3. Testing Security Boundary (Owner, Active Admin, and Revocation)...");
