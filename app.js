@@ -1,5 +1,5 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
-import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, sendPasswordResetEmail, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, sendPasswordResetEmail, signOut, sendEmailVerification, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 import { getFirestore, doc, setDoc, getDoc, collection, query, orderBy, onSnapshot, serverTimestamp, updateDoc } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 import { firebaseConfig, ownerUid } from "./firebase-config.js";
 import { generateQrMatrix, renderQrDataUrl } from "./qr-client.js";
@@ -141,13 +141,13 @@ function humanChallenge() {
   humanForm.addEventListener("submit", event => {
     event.preventDefault();
     if (Number($("#human-answer").value) !== a + b) {
-      $("#human-status").textContent = "That answer didn’t match. Try the addition again.";
+      $("#human-status").textContent = "That answer didn't match. Try the addition again.";
       $("#human-answer").value = "";
       $("#human-answer").focus();
       return;
     }
     saveHumanCheck();
-    $("#human-status").textContent = "Verified. Opening the access screen…";
+    $("#human-status").textContent = "Verified. Opening the access screen...";
     humanGate.classList.add("gate-complete");
     window.setTimeout(() => {
       humanGate.hidden = true;
@@ -252,7 +252,7 @@ async function refreshRandomQr() {
   changeMonogramColor();
   animateMagneticTiles();
 
-  if (label) label.textContent = "RETRIEVING RANDOM DESTINATION…";
+  if (label) label.textContent = "RETRIEVING RANDOM DESTINATION...";
   if (qrDock) qrDock.style.transform = "translate(-50%, -50%) rotate(0deg) scale(0.95)";
 
   try {
@@ -373,7 +373,7 @@ async function setApplicationPermission(uid, action) {
 
 if ($("#sign-out")) {
   $("#sign-out").addEventListener("click", async event => {
-    setBusy(event.currentTarget, true, "…");
+    setBusy(event.currentTarget, true, "...");
     try { await signOut(auth); location.reload(); }
     catch (error) { setBusy(event.currentTarget, false); showSiteFeedback(`Could not sign out. ${errorMessage(error)}`); }
   });
@@ -398,8 +398,9 @@ if (!configured) {
     requestInProgress = true;
     const button = event.currentTarget.querySelector('button[type="submit"]');
     const rawEmail = $("#request-email").value.trim();
-    setBusy(button, true, "Submitting…");
-    showStatus("Submitting your access request…", "info");
+    const rawPassword = $("#request-password").value;
+    setBusy(button, true, "Submitting...");
+    showStatus("Submitting your access request...", "info");
 
     const targetEmail = rawEmail.toLowerCase();
     if (!EMAIL_REGEX.test(targetEmail)) {
@@ -408,11 +409,15 @@ if (!configured) {
       setBusy(button, false);
       return;
     }
+    if (!rawPassword || rawPassword.length < 8) {
+      showStatus("Use a password with at least 8 characters.", "error");
+      requestInProgress = false;
+      setBusy(button, false);
+      return;
+    }
 
     try {
-      // Email syntax, including any suffix, is never an authorization signal.
-      // Approval is restricted to the owner-controlled review flow below.
-      const credential = await createUserWithEmailAndPassword(auth, targetEmail, `${crypto.randomUUID()}Aa1!`);
+      const credential = await createUserWithEmailAndPassword(auth, targetEmail, rawPassword);
       await setDoc(doc(db, "users", credential.user.uid), {
         email: targetEmail,
         approved: false,
@@ -425,7 +430,8 @@ if (!configured) {
         deliveryStatus: "pending",
         createdAt: serverTimestamp()
       });
-      showStatus("Request submitted. I’ll review it. Once approved, FJ will send you a secure link to set your password.", "success");
+      await sendEmailVerification(credential.user, { url: "https://faissalness.github.io/", handleCodeInApp: false });
+      showStatus("Request submitted. Check your email to verify your address. Once verified and approved, you can sign in.", "success");
       await signOut(auth);
     } catch (error) {
       showStatus(`Request not completed. ${errorMessage(error)}`, "error");
@@ -438,8 +444,8 @@ if (!configured) {
   $("#sign-in-form").addEventListener("submit", async event => {
     event.preventDefault();
     const button = event.currentTarget.querySelector('button[type="submit"]');
-    setBusy(button, true, "Opening…");
-    showStatus("Checking your sign-in…", "info");
+    setBusy(button, true, "Opening...");
+    showStatus("Checking your sign-in...", "info");
     try { await signInWithEmailAndPassword(auth, $("#sign-in-email").value.trim().toLowerCase(), $("#sign-in-password").value); }
     catch (error) { showStatus(`Sign-in failed. ${errorMessage(error)}`, "error"); }
     finally { setBusy(button, false); }
@@ -449,11 +455,11 @@ if (!configured) {
     event.preventDefault();
     const button = event.currentTarget.querySelector('button[type="submit"]');
     const email = $("#reset-email").value.trim().toLowerCase();
-    setBusy(button, true, "Sending…");
-    showStatus("Requesting a secure password link…", "info");
+    setBusy(button, true, "Sending...");
+    showStatus("Requesting a secure password link...", "info");
     try {
       await sendPasswordResetEmail(auth, email, { url: "https://faissalness.github.io/", handleCodeInApp: false });
-      showStatus("FJ accepted the request. Check your inbox and spam folder for the password link. For privacy, this page won’t reveal whether the email has an account.", "success");
+      showStatus("FJ accepted the request. Check your inbox and spam folder for the password link. For privacy, this page won't reveal whether the email has an account.", "success");
     } catch (error) { showStatus(`Could not send the password link. ${errorMessage(error)}`, "error"); }
     finally { setBusy(button, false); }
   });
@@ -471,6 +477,11 @@ if (!configured) {
       return;
     }
     window.fjHasAuthenticatedSession = true;
+    if (!user.emailVerified) {
+      showStatus("Please verify your email address. Check your inbox for the verification link.", "info");
+      await signOut(auth);
+      return;
+    }
     if (!hasHumanCheckPassed()) {
       $("#private-home").hidden = true;
       $("#site-nav").hidden = true;
@@ -481,13 +492,13 @@ if (!configured) {
     }
     $("#human-gate").hidden = true;
     $("#auth-shell").hidden = true;
-    showStatus("Verifying your access…", "info");
+    showStatus("Verifying your access...", "info");
     try {
       const profile = await getDoc(doc(db, "users", user.uid));
       // Owner is always approved
       const isApproved = (user.uid === ownerUid) || (profile.exists() && profile.data().approved === true);
       if (!isApproved) {
-        showStatus("Your request is waiting for approval. You’ll receive a secure password link after approval.", "info");
+        showStatus("Your request is waiting for approval. Once approved, you can sign in.", "info");
         await signOut(auth);
         return;
       }
@@ -514,15 +525,15 @@ if (!configured) {
           email.textContent = data.email;
           const button = document.createElement("button");
           button.type = "button";
-          button.textContent = "Approve & email link";
+          button.textContent = "Approve";
           button.addEventListener("click", async () => {
             // Prevent duplicate sending if already sent
             if (data.deliveryStatus === "sent") {
               showDrawerStatus(`${data.email} was already sent a password reset link.`, "info");
               return;
             }
-            setBusy(button, true, "Approving…");
-            showDrawerStatus(`Approving ${data.email}…`, "info");
+            setBusy(button, true, "Approving...");
+            showDrawerStatus(`Approving ${data.email}...`, "info");
             try {
               if (data.uid) {
                 await updateDoc(doc(db, "users", data.uid), { approved: true });
@@ -534,12 +545,12 @@ if (!configured) {
                 reviewedBy: user.uid
               });
               try {
-                await sendPasswordResetEmail(auth, data.email.trim().toLowerCase(), { url: "https://faissalness.github.io/", handleCodeInApp: false });
+                await sendEmailVerification(auth, data.email.trim().toLowerCase(), { url: "https://faissalness.github.io/", handleCodeInApp: false });
                 await updateDoc(item.ref, {
                   deliveryStatus: "sent",
                   deliveryTimestamp: serverTimestamp()
                 });
-                showDrawerStatus(`Approved. FJ sent a secure password link to ${data.email}.`, "success");
+                showDrawerStatus(`Approved. FJ sent a verification email to ${data.email}.`, "success");
               } catch (emailError) {
                 await updateDoc(item.ref, {
                   deliveryStatus: "failed",
@@ -561,7 +572,7 @@ if (!configured) {
           rejectBtn.style.color = "#ff71b8";
           rejectBtn.addEventListener("click", async () => {
             if (!confirm(`Reject access request for ${data.email}?`)) return;
-            setBusy(rejectBtn, true, "Rejecting…");
+            setBusy(rejectBtn, true, "Rejecting...");
             try {
               await updateDoc(item.ref, {
                 status: "rejected",
