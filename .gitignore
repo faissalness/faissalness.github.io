@@ -8,3 +8,10 @@ serviceAccount*.json
 *-firebase-adminsdk-*.json
 .aider*
 test_*
+
+# Local tool state and generated artifacts (never publish or commit)
+.wrangler/
+node_modules/
+test-results/
+playwright-report/
+*.tsbuildinfo

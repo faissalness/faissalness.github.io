@@ -63,7 +63,14 @@ class FakeD1 {
         if (sql.includes("UPDATE registered_users SET status = 'active'")) {
           const [uid, now] = args; const user = db.users.get(uid);
           if (!user || user.status !== "scheduled" || user.deletionAt <= now) return null;
-          user.status = "active"; user.deletionAt = null; return { uid };
+          user.status = "active"; user.deletionAt = null;
+          // Mirror the Worker SQL faithfully: the legacy cancellation statement
+          // also overwrote both application statuses, which allowed a revoked
+          // user to regain access by scheduling and immediately cancelling.
+          if (sql.includes("pip_status = 'active'")) {
+            user.pipStatus = "active"; user.notesStatus = "active";
+          }
+          return { uid };
         }
         if (sql.includes("FROM rate_limits")) return db.rates.get(args[0]) || null;
         if (sql.includes("FROM notes_config")) return db.config;
@@ -120,7 +127,16 @@ class FakeD1 {
           const user = db.users.get(args[0]);
           if (user && user.status === "active") { user.status = "scheduled"; user.deletionAt = null; }
         } else if (sql.includes("UPDATE registered_users SET status = 'scheduled'")) {
-          const user = db.users.get(args[1]); if (user && user.status === "active") { user.status = "scheduled"; user.deletionAt = args[0]; }
+          const user = db.users.get(args[1]);
+          if (user && user.status === "active") {
+            user.status = "scheduled"; user.deletionAt = args[0];
+            if (sql.includes("pip_status = 'revoked'")) {
+              user.pipStatus = "revoked"; user.notesStatus = "revoked";
+            }
+          }
+        } else if (sql.includes("UPDATE registered_users SET status = 'active', deletion_at = NULL WHERE uid = ?")) {
+          const user = db.users.get(args[0]);
+          if (user) { user.status = "active"; user.deletionAt = null; }
         } else if (sql.includes("INSERT INTO pal_invitations")) {
           const [id, emailDigest, inviterUid, inviterName, createdAt] = args;
           db.palInvites.set(id, { id, emailDigest, inviterUid, inviterName, status: "pending", createdAt, recipientUid: null });

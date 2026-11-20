@@ -368,8 +368,12 @@ const userToken = makeTestJwt({
   assert.strictEqual(createInvite.status, 201, "Only the owner can issue a persistent invitation");
   const issued = await createInvite.json();
   assert.match(issued.token, /^fj_[0-9a-f]{48}fj$/);
+  // Invitation redemption requires a verified Firebase identity.
+  const verifiedRedeemToken = makeTestJwt(makeClaims({
+    sub: "redeem_user", email: "redeem@example.com", email_verified: true
+  }));
   const redeemRequest = () => new Request("https://api.local/api/invitations/redeem", {
-    method: "POST", headers: { "Authorization": `Bearer ${userToken}`, "Content-Type": "application/json" },
+    method: "POST", headers: { "Authorization": `Bearer ${verifiedRedeemToken}`, "Content-Type": "application/json" },
     body: JSON.stringify({ token: issued.token })
   });
   const redeemOnce = await worker.fetch(redeemRequest(), {}, {});
@@ -628,8 +632,9 @@ const userToken = makeTestJwt({
   assert.strictEqual(gzDb.users.get("gz_user_a").status, "active", "Reactivation restores the account");
   assert.strictEqual(gzDb.users.get("gz_user_a").pipStatus, "active", "Reactivation restores PIP access");
   const gzDeleteResp = await gzWorker.fetch(new Request("https://api.local/api/admin/accounts/gz_user_a/delete", { method: "POST", headers: { Authorization: `Bearer ${verifiedOwnerToken}`, "Content-Type": "application/json" }, body: "{}" }), {}, {});
-  assert.strictEqual(gzDeleteResp.status, 200, "Owner may delete an account");
-  assert.strictEqual(gzDb.users.has("gz_user_a"), false, "Deleting an account removes the D1 record");
+  assert.strictEqual(gzDeleteResp.status, 503, "Account deletion fails closed without a trusted Firebase Admin SDK");
+  assert.strictEqual(gzDb.users.has("gz_user_a"), true, "A refused deletion must not partially erase D1 data");
+  assert.strictEqual(gzDb.users.get("gz_user_a").status, "active", "A refused deletion leaves the account active");
   const gzUnknown = await gzWorker.fetch(new Request("https://api.local/api/admin/accounts/does_not_exist/suspend", { method: "POST", headers: { Authorization: `Bearer ${verifiedOwnerToken}`, "Content-Type": "application/json" }, body: "{}" }), {}, {});
   assert.strictEqual(gzUnknown.status, 404, "Suspending an unknown account is a 404");
 

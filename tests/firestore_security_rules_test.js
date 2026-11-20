@@ -258,7 +258,7 @@ class RulesSimulator {
 
 const sim = new RulesSimulator(mockDb);
 let passedCount = 0;
-let totalCount = 74;
+let totalCount = 75;
 
 function runTest(num, name, condition) {
   assert.ok(condition, `Test ${num} FAILED: ${name}`);
@@ -451,6 +451,9 @@ runTest(62, "Unapproved user cannot write their own Your Notes -> DENIED",
 runTest(63, "Verified fj-suffix account receives automatic application access (no mirror record)",
   sim.evaluate({ auth: { uid: "fj_suffix_user", emailVerified: true, email: "janefj@example.com" }, path: "yourNotes/fj_suffix_user/notes/suffix-note", operation: "read" }) === true);
 
+runTest(75, "A bare 'fj' local part is not automatic approval (matches Worker suffix rule)",
+  sim.evaluate({ auth: { uid: "bare_suffix_uid", emailVerified: true, email: "fj@example.com" }, path: "yourNotes/bare_suffix_uid/notes/suffix-note", operation: "read" }) === false);
+
 runTest(64, "Revoked user cannot read their own Your Notes -> DENIED",
   sim.evaluate({ auth: { uid: OTHER_USER_UID, emailVerified: true }, path: `yourNotes/${OTHER_USER_UID}/notes/n1`, operation: "read" }) === false);
 
@@ -521,4 +524,4 @@ runTest(74, "Owner deletes a user account whose Your Notes are not deletion-read
   })());
 
 console.log(`\n=== FIRESTORE RULES VERIFICATION RESULT: ${passedCount} / ${totalCount} PASSED ===`);
-assert.strictEqual(passedCount, 74, "All 74 Firestore rules simulator cases must pass!");
+assert.strictEqual(passedCount, 75, "All 75 Firestore rules simulator cases must pass!");

@@ -41,6 +41,46 @@ function initializeFirebaseAdmin(env) {
   }
 }
 
+const FIRESTORE_ACCOUNT_COLLECTIONS = [
+  "users", "accessRequests", "applicationPermissions", "activeNotesSessions"
+];
+
+function d1AccountCleanupStatements(uid) {
+  return [
+    ["DELETE FROM profile_photos WHERE uid = ?", [uid]],
+    ["DELETE FROM pal_invitations WHERE inviter_uid = ? OR recipient_uid = ?", [uid, uid]],
+    ["DELETE FROM pals WHERE uid_low = ? OR uid_high = ?", [uid, uid]],
+    ["DELETE FROM pip_messages WHERE sender_uid = ? OR recipient_uid = ?", [uid, uid]],
+    ["DELETE FROM social_posts WHERE author_uid = ?", [uid]],
+    ["DELETE FROM rate_limits WHERE rate_key LIKE ?", [`${uid}%`]],
+    ["DELETE FROM active_sessions WHERE uid = ?", [uid]]
+  ];
+}
+
+// Remove every durable trace of an account before deleting the Firebase identity.
+// The Auth user is deliberately deleted last: a failure in Firestore or D1 then
+// leaves an identity that can no longer reach any application data, instead of
+// orphaned private data behind an identity that no longer exists.
+async function purgeAccountData(admin, env, uid) {
+  await admin.firestore.recursiveDelete(admin.firestore.collection("yourNotes").doc(uid));
+  for (const collection of FIRESTORE_ACCOUNT_COLLECTIONS) {
+    try {
+      await admin.firestore.doc(`${collection}/${uid}`).delete();
+    } catch (e) {
+      console.error(`Account cleanup: could not delete ${collection}/${uid}:`, e.message);
+    }
+  }
+  for (const [sql, values] of d1AccountCleanupStatements(uid)) {
+    try {
+      await env.DB.prepare(sql).bind(...values).run();
+    } catch (e) {
+      console.error(`Account cleanup: D1 statement failed for ${uid}:`, e.message);
+    }
+  }
+  await env.DB.prepare("DELETE FROM registered_users WHERE uid = ?").bind(uid).run();
+  await admin.auth.deleteUser(uid);
+}
+
 function bufferToHex(buffer) {
   return Array.from(new Uint8Array(buffer)).map(b => b.toString(16).padStart(2, "0")).join("");
 }
@@ -198,12 +238,20 @@ function hasAutomaticApprovalEmail(identity) {
   if (identity?.email_verified !== true || typeof identity.email !== "string") return false;
   const email = identity.email.trim().toLowerCase();
   const separator = email.indexOf("@");
-  return separator > 0
+  // Matches the Firestore rule ^[^@]+[fF][jJ]@[^@]+$: at least one character must
+  // precede the fj suffix, so a bare local part of "fj" is not an automatic grant.
+  return separator > 2
     && separator === email.lastIndexOf("@")
     && email.length <= 254
     && !/\s/.test(email)
     && email.slice(0, separator).endsWith("fj")
     && separator < email.length - 1;
+}
+
+// Display names are attacker-controlled (the user sets their Firebase profile).
+// Strip control characters before persisting them for owner-facing dashboards.
+function cleanDisplayName(value) {
+  return String(value || "").replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, 80);
 }
 
 function decodeBase64Url(value) {
@@ -316,20 +364,7 @@ export default {
     for (const account of dueAccounts.results || []) {
       if (admin) {
         try {
-          await admin.auth.deleteUser(account.uid);
-          await admin.firestore.recursiveDelete(admin.firestore.collection("yourNotes").doc(account.uid));
-          await admin.firestore.doc(`users/${account.uid}`).delete().catch(() => {});
-          await admin.firestore.doc(`accessRequests/${account.uid}`).delete().catch(() => {});
-          await admin.firestore.doc(`applicationPermissions/${account.uid}`).delete().catch(() => {});
-          await admin.firestore.doc(`activeNotesSessions/${account.uid}`).delete().catch(() => {});
-          await env.DB.prepare("DELETE FROM registered_users WHERE uid = ?").bind(account.uid).run();
-          await env.DB.prepare("DELETE FROM profile_photos WHERE uid = ?").bind(account.uid).run();
-          await env.DB.prepare("DELETE FROM pal_invitations WHERE inviter_uid = ? OR recipient_uid = ?").bind(account.uid, account.uid).run();
-          await env.DB.prepare("DELETE FROM pals WHERE uid_low = ? OR uid_high = ?").bind(account.uid, account.uid).run();
-          await env.DB.prepare("DELETE FROM pip_messages WHERE sender_uid = ? OR recipient_uid = ?").bind(account.uid, account.uid).run();
-          await env.DB.prepare("DELETE FROM social_posts WHERE author_uid = ?").bind(account.uid).run();
-          await env.DB.prepare("DELETE FROM rate_limits WHERE rate_key LIKE ?").bind(`${account.uid}%`).run();
-          await env.DB.prepare("DELETE FROM active_sessions WHERE uid = ?").bind(account.uid).run();
+          await purgeAccountData(admin, env, account.uid);
           console.log(`Automated deletion completed for ${account.uid}`);
         } catch (e) {
           console.error(`Automated deletion failed for ${account.uid}:`, e.message);
@@ -368,6 +403,9 @@ export default {
       return verifyFirebaseIdToken(header.replace(/^Bearer\s+/i, ""));
     };
     const accountIsActive = async uid => {
+      // The immutable owner is authoritative and must never be locked out by a
+      // missing or stale D1 mirror row (Firestore rules apply the same bypass).
+      if (uid === OWNER_UID) return true;
       const account = await env.DB.prepare("SELECT status, pip_status AS pipStatus FROM registered_users WHERE uid = ?").bind(uid).first();
       return account?.status === "active" && account?.pipStatus === "active";
     };
@@ -405,9 +443,9 @@ export default {
         await env.DB.prepare(`INSERT OR IGNORE INTO registered_users
           (uid, registered_at, display_name, email_digest, status, pip_status, notes_status)
           VALUES (?, ?, ?, ?, ?, ?, ?)`)
-          .bind(identity.sub, Date.now(), String(identity.name || "").slice(0, 80), emailDigest, accountStatus, applicationStatus, applicationStatus).run();
+          .bind(identity.sub, Date.now(), cleanDisplayName(identity.name), emailDigest, accountStatus, applicationStatus, applicationStatus).run();
         await env.DB.prepare("UPDATE registered_users SET display_name = ?, email_digest = ? WHERE uid = ?")
-          .bind(String(identity.name || "").slice(0, 80), emailDigest, identity.sub).run();
+          .bind(cleanDisplayName(identity.name), emailDigest, identity.sub).run();
         if (isOwner) {
           await env.DB.prepare("UPDATE registered_users SET status = 'active', pip_status = 'active', notes_status = 'active', deletion_at = NULL WHERE uid = ?")
             .bind(identity.sub).run();
@@ -437,12 +475,15 @@ export default {
           return new Response(JSON.stringify({ error: "Administrator access denied" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         }
         const body = await request.json();
-        const uid = typeof body.uid === "string" ? body.uid.slice(0, 128) : "";
+        const uid = typeof body.uid === "string" ? body.uid : "";
         const action = body.action;
-        const target = body.target === "pip" || body.target === "notes" ? [body.target] : ["pip", "notes"];
-        if (!uid || !["approve", "revoke"].includes(action)) {
+        if (!/^[A-Za-z0-9_-]{1,128}$/.test(uid) || !["approve", "revoke"].includes(action)) {
           return new Response(JSON.stringify({ error: "Invalid permission action" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         }
+        if (body.target !== undefined && !["pip", "notes", "both"].includes(body.target)) {
+          return new Response(JSON.stringify({ error: "Invalid permission target" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+        const target = body.target === "pip" || body.target === "notes" ? [body.target] : ["pip", "notes"];
         // Create the account row when it has no D1 record yet so approval state can
         // be set for newly registered accounts and accounts whose PIP record is missing.
         await env.DB.prepare(`INSERT OR IGNORE INTO registered_users
@@ -505,28 +546,27 @@ export default {
         }
         const uid = gzAccountPathMatch[1];
         const action = gzAccountPathMatch[2];
+        if (uid === OWNER_UID && (action === "suspend" || action === "delete")) {
+          return new Response(JSON.stringify({ error: "The immutable owner account cannot be suspended or deleted" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
         const account = await env.DB.prepare("SELECT status, deletion_at AS deletionAt FROM registered_users WHERE uid = ?").bind(uid).first();
         if (!account) {
           return new Response(JSON.stringify({ error: "Account not found" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         }
         if (action === "suspend") {
+          // Suspension is signalled only by account status. Application statuses remain
+          // untouched so reactivation cannot grant permissions the owner never gave.
           await env.DB.prepare("UPDATE registered_users SET status = 'scheduled', deletion_at = NULL WHERE uid = ?").bind(uid).run();
         } else if (action === "reactivate") {
-          await env.DB.prepare("UPDATE registered_users SET status = 'active', pip_status = 'active', notes_status = 'active', deletion_at = NULL WHERE uid = ?").bind(uid).run();
+          await env.DB.prepare("UPDATE registered_users SET status = 'active', deletion_at = NULL WHERE uid = ?").bind(uid).run();
         } else if (action === "delete") {
-          const related = [
-            ["DELETE FROM profile_photos WHERE uid = ?", [uid]],
-            ["DELETE FROM pal_invitations WHERE inviter_uid = ? OR recipient_uid = ?", [uid, uid]],
-            ["DELETE FROM pals WHERE uid_low = ? OR uid_high = ?", [uid, uid]],
-            ["DELETE FROM pip_messages WHERE sender_uid = ? OR recipient_uid = ?", [uid, uid]],
-            ["DELETE FROM social_posts WHERE author_uid = ?", [uid]],
-            ["DELETE FROM rate_limits WHERE rate_key LIKE ?", [`${uid}%`]],
-            ["DELETE FROM active_sessions WHERE uid = ?", [uid]]
-          ];
-          for (const [sql, values] of related) {
-            try { await env.DB.prepare(sql).bind(...values).run(); } catch (_) { /* cleanup best effort */ }
+          const admin = initializeFirebaseAdmin(env);
+          if (!admin) {
+            // D1-only cleanup would leave a live Firebase identity and Firestore data.
+            // Refuse instead of reporting a deletion that did not actually happen.
+            return new Response(JSON.stringify({ error: "Secure full account deletion requires Firebase Admin SDK. Configure FIREBASE_ADMIN_KEY secret." }), { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } });
           }
-          await env.DB.prepare("DELETE FROM registered_users WHERE uid = ?").bind(uid).run();
+          await purgeAccountData(admin, env, uid);
         }
         const after = await env.DB.prepare("SELECT uid, status, pip_status AS pipStatus, notes_status AS notesStatus, deletion_at AS deletionAt FROM registered_users WHERE uid = ?").bind(uid).first();
         return new Response(JSON.stringify({ success: true, uid, action, account: after || null }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -659,11 +699,14 @@ export default {
         if (body.action === "schedule") {
           const admin = initializeFirebaseAdmin(env);
           const deletionAt = Date.now() + 30 * 24 * 60 * 60 * 1000;
-          await env.DB.prepare("UPDATE registered_users SET status = 'scheduled', deletion_at = ?, pip_status = 'revoked', notes_status = 'revoked' WHERE uid = ?").bind(deletionAt, identity.sub).run();
+          // Suspension is enforced by the account status (accountIsActive checks it).
+          // Application statuses must NOT be overwritten here: cancelling deletion
+          // must never restore permissions that the owner had explicitly revoked.
+          await env.DB.prepare("UPDATE registered_users SET status = 'scheduled', deletion_at = ? WHERE uid = ?").bind(deletionAt, identity.sub).run();
           return new Response(JSON.stringify({ success: true, deletionAt, adminConfigured: !!admin }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         }
         if (body.action === "cancel") {
-          const result = await env.DB.prepare("UPDATE registered_users SET status = 'active', deletion_at = NULL, pip_status = 'active', notes_status = 'active' WHERE uid = ? AND status = 'scheduled' RETURNING uid").bind(identity.sub).first();
+          const result = await env.DB.prepare("UPDATE registered_users SET status = 'active', deletion_at = NULL WHERE uid = ? AND status = 'scheduled' RETURNING uid").bind(identity.sub).first();
           if (!result) return new Response(JSON.stringify({ error: "Deletion cannot be cancelled" }), { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } });
           return new Response(JSON.stringify({ success: true }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         }
@@ -687,20 +730,7 @@ export default {
         if (!admin) {
           return new Response(JSON.stringify({ error: "Secure full account deletion requires Firebase Admin SDK. Configure FIREBASE_ADMIN_KEY secret." }), { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         }
-        await admin.auth.deleteUser(identity.sub);
-        await admin.firestore.recursiveDelete(admin.firestore.collection("yourNotes").doc(identity.sub));
-        await admin.firestore.doc(`users/${identity.sub}`).delete().catch(() => {});
-        await admin.firestore.doc(`accessRequests/${identity.sub}`).delete().catch(() => {});
-        await admin.firestore.doc(`applicationPermissions/${identity.sub}`).delete().catch(() => {});
-        await admin.firestore.doc(`activeNotesSessions/${identity.sub}`).delete().catch(() => {});
-        await env.DB.prepare("DELETE FROM registered_users WHERE uid = ?").bind(identity.sub).run();
-        await env.DB.prepare("DELETE FROM profile_photos WHERE uid = ?").bind(identity.sub).run();
-        await env.DB.prepare("DELETE FROM pal_invitations WHERE inviter_uid = ? OR recipient_uid = ?").bind(identity.sub, identity.sub).run();
-        await env.DB.prepare("DELETE FROM pals WHERE uid_low = ? OR uid_high = ?").bind(identity.sub, identity.sub).run();
-        await env.DB.prepare("DELETE FROM pip_messages WHERE sender_uid = ? OR recipient_uid = ?").bind(identity.sub, identity.sub).run();
-        await env.DB.prepare("DELETE FROM social_posts WHERE author_uid = ?").bind(identity.sub).run();
-        await env.DB.prepare("DELETE FROM rate_limits WHERE rate_key LIKE ?").bind(`${identity.sub}%`).run();
-        await env.DB.prepare("DELETE FROM active_sessions WHERE uid = ?").bind(identity.sub).run();
+        await purgeAccountData(admin, env, identity.sub);
         return new Response(JSON.stringify({ success: true }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       } catch (_) {
         return new Response(JSON.stringify({ error: "Account deletion failed" }), { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -815,6 +845,7 @@ export default {
       try {
         const identity = await readIdentity();
         if (!identity || identity.email_verified !== true) return new Response(JSON.stringify({ error: "Verified sign-in required" }), { status: identity ? 403 : 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        if (!await accountIsActive(identity.sub)) return new Response(JSON.stringify({ error: "Active PIP account required" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         const postId = postMutationMatch[1];
         const body = request.method === "POST" ? await request.json() : {};
         if (request.method === "DELETE" || body.action === "trash") {
@@ -839,6 +870,7 @@ export default {
       try {
         const identity = await readIdentity();
         if (!identity || identity.email_verified !== true) return new Response(JSON.stringify({ error: "Verified sign-in required" }), { status: identity ? 403 : 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        if (!await accountIsActive(identity.sub)) return new Response(JSON.stringify({ error: "Active PIP account required" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         const pair = [identity.sub, palRemovalMatch[1]].sort();
         await env.DB.batch([
           env.DB.prepare("DELETE FROM pals WHERE uid_low = ? AND uid_high = ?").bind(pair[0], pair[1]),
@@ -1136,13 +1168,9 @@ export default {
         if (!email || !["approved", "rejected"].includes(action)) {
           return new Response(JSON.stringify({ error: "Invalid request" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         }
-        const emailServiceKey = env?.EMAIL_SERVICE_KEY;
-        if (!emailServiceKey) {
-          return new Response(JSON.stringify({ error: "Email notification service not configured. Configure EMAIL_SERVICE_KEY secret." }), { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-        }
-        // Email sending would be implemented here with the configured service
-        // For now, return success to indicate the endpoint is ready
-        return new Response(JSON.stringify({ success: true, queued: true }), { status: 202, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        // No trusted notification sender is wired to this Worker. Never report a
+        // message as queued when nothing was actually delivered or persisted.
+        return new Response(JSON.stringify({ error: "Approval email delivery is not configured. No notification was sent." }), { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       } catch (_) {
         return new Response(JSON.stringify({ error: "Notification could not be queued" }), { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
@@ -1157,6 +1185,12 @@ export default {
         if (!identity) {
           return new Response(JSON.stringify({ error: "Access denied" }), {
             status: 401,
+            headers: { ...corsHeaders, "Content-Type": "application/json" }
+          });
+        }
+        if (identity.email_verified !== true) {
+          return new Response(JSON.stringify({ error: "Verified email required" }), {
+            status: 403,
             headers: { ...corsHeaders, "Content-Type": "application/json" }
           });
         }

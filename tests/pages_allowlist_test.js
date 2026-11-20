@@ -3,7 +3,9 @@ const fs = require('fs');
 const path = require('path');
 
 const root = path.join(__dirname, '..');
-const workflow = fs.readFileSync(path.join(root, '.github', 'workflows', 'deploy-pages.yml'), 'utf8');
+// Normalize line endings so the same assertion works in a CRLF Windows checkout
+// and in the LF GitHub Actions runner.
+const workflow = fs.readFileSync(path.join(root, '.github', 'workflows', 'deploy-pages.yml'), 'utf8').replace(/\r\n?/g, '\n');
 const allowlistSection = workflow.split('for file in \\\n')[1]?.split('; do')[0];
 assert.ok(allowlistSection, 'Pages workflow must use an explicit public file allowlist');
 const allowlist = allowlistSection.replace(/\\/g, '').trim().split(/\s+/).filter(Boolean);
