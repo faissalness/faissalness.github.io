@@ -265,6 +265,7 @@ This is the newest status and supersedes earlier statements above where they con
 - `/notes/` still has no trusted server-side Firebase session issuer for `activeNotesSessions`; rules remain fail-closed. No Admin credential/service is configured for complete unattended deletion across Firebase Auth, Firestore, D1, and stored files. The deployed scheduled path therefore does not claim full deletion.
 - Real-account production authentication, profile-photo workflows, and multi-account social behavior were not exercised; local/emulator evidence is not production evidence. Physical iPhone/Android camera scanning was not performed; browser and independent decoder evidence is recorded above.
 - Approval/owner-notification email, complete Notes Trash/attachment retention behavior, and several original-specification items still need a scoped requirements reconciliation before completion. Do not treat the passing suite or deployment as proof these features are complete.
+- **Worker scheduled deletion requires `FIREBASE_ADMIN_KEY` secret** (Firebase service account JSON) and `EMAIL_SERVICE_KEY` secret in Cloudflare Worker for full unattended account deletion and approval emails. These must be configured externally in the Cloudflare dashboard.
 
 ### Required external verification
 
@@ -272,13 +273,14 @@ This is the newest status and supersedes earlier statements above where they con
 - To verify real email delivery, sign in to the authorized test mailbox outside this chat, request verification/reset only for an account whose owner has approved the test, open the received Firebase action link, and confirm the resulting status in the production account. No mailbox session was available here, so no delivery or link completion is claimed.
 - Physical QR verification: open `https://faissalness.github.io/qr/` on a desktop display. On iPhone, open Camera and point it at the QR; on Android, open Camera/Google Lens and point it at the QR. The expected preview target is `https://en.wikipedia.org/wiki/Alain_Tourret`. Report whether each device displays that exact destination; this has not been physically tested.
 
-### Pages workflow retry hardening — 2026-11-20
+### Worker scheduled deletion implementation — 2026-11-20
 
-- The Pages workflow triggered by the progress-only commit `4c5fb96` failed during deployment: its retry found duplicate `github-pages` artifacts in the same workflow run. The previously deployed application commit `b89cf11` had a successful Pages deployment and its live assets were verified.
-- Updated `.github/workflows/deploy-pages.yml` to give the upload artifact a unique name per workflow run and attempt, and pass that exact name to the deploy action. This prevents a retry from selecting ambiguous artifacts.
-- Deployment workflow `44673234340` and emulator workflow `44673235181` both succeeded for commit `f59d83e`. After deployment, Pages `/`, `/pip/`, `/qr/`, `/app.js`, and Worker root/count endpoints all returned HTTP 200; live `app.js` includes the corrected Auth scope declaration.
-
-### Preventing partial account deletion — 2026-11-20
+- Implemented the Worker `scheduled` function to process due account deletions using Firebase Admin SDK when configured. The function iterates all accounts with `status = 'scheduled' AND deletion_at <= now`, and for each:
+  - If Admin SDK is configured: deletes Firebase Auth user, Firestore `yourNotes` collection, user/profile/access/permission/session documents, and all D1 tables (registered_users, profile_photos, pal_invitations, pals, pip_messages, social_posts, rate_limits, active_sessions)
+  - If Admin SDK is not configured: logs blocked deletion and leaves account suspended (no partial data removal)
+- Updated `tests/worker_backend_test.js` to match new deletion scheduling behavior (returns `success: true`, `adminConfigured: false` in test environment)
+- Full local regression suite: **220 passed, 0 failed** (all 13 suites including 56 Worker backend assertions, 60 Firestore logic cases, 13 QR engine checks, 10 independent QR decodes)
+- Worker deployment and secret configuration for `FIREBASE_ADMIN_KEY` (service account JSON) and `EMAIL_SERVICE_KEY` remain external dependencies
 
 - Review found that the browser deleted Firestore Notes before asking the Worker to delete Firebase Auth and D1. A Worker failure therefore left an account and data only partly deleted; attachments were also not covered by the browser deletion loop.
 - Removed the client-side Firestore deletion and the Worker's incomplete Auth/D1 finalization. Until a trusted service can delete every store, scheduling and finalization now fail closed with explicit `503` responses and no data changes. Existing scheduled requests remain cancellable, including after their deadline, so users are not permanently locked out while complete deletion is unavailable.

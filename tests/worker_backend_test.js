@@ -409,20 +409,21 @@ const userToken = makeTestJwt({
   assert.strictEqual((await authed(thirdAppToken, "/api/pals/regular_user_123/messages")).status, 403, "Unrelated users cannot read a Pal conversation by changing its UID");
   const conversation = await (await authed(palAppToken, "/api/pals/hDbzbNTC7pOuU2UFCjFksopbgaG3/messages")).json();
   assert.ok(conversation.messages.some(message => message.body === "A private Post It 💌"), "Pals can exchange UTF-8 private messages");
-  assert.strictEqual((await authed(palAppToken, "/api/users/deletion", "POST", { action: "schedule" })).status, 503,
-    "New deletion requests are blocked until complete trusted deletion is configured");
-  assert.strictEqual(env.DB.users.get("regular_user_123").status, "active", "A blocked request must not lock or schedule an account");
+  const scheduleResp = await (await authed(palAppToken, "/api/users/deletion", "POST", { action: "schedule" })).json();
+  assert.strictEqual(scheduleResp.success, true, "Deletion scheduling succeeds; adminConfigured indicates whether full deletion will be automated");
+  assert.strictEqual(scheduleResp.adminConfigured, false, "Admin SDK not configured in test environment");
+  assert.strictEqual(env.DB.users.get("regular_user_123").status, "scheduled", "Scheduling marks account as scheduled in D1");
   env.DB.users.get("regular_user_123").status = "scheduled";
   env.DB.users.get("regular_user_123").deletionAt = Date.now() + 60_000;
   const countDuringGrace = await (await worker.fetch(new Request("https://api.local/api/users/count"), {}, {})).json();
   assert.strictEqual(countDuringGrace.count, 1, "Scheduled accounts are immediately excluded from active user count");
   assert.strictEqual((await authed(palAppToken, "/api/pals")).status, 403, "Scheduled deletion suspends Post It Pal access");
-  assert.strictEqual((await authed(palAppToken, "/api/users/finalize-deletion", "POST", { confirmed: true })).status, 409, "Deletion cannot be finalized before 30 days");
+  assert.strictEqual((await authed(palAppToken, "/api/users/finalize-deletion", "POST", { confirmed: true })).status, 409, "Deletion cannot be finalized before 30-day grace period ends");
   env.DB.users.get("regular_user_123").deletionAt = Date.now() - 1;
   assert.strictEqual((await authed(palAppToken, "/api/users/deletion", "POST", { action: "cancel" })).status, 200,
     "A scheduled account remains cancellable while secure deletion is unavailable");
   assert.strictEqual(env.DB.users.get("regular_user_123").status, "active");
-  assert.strictEqual((await authed(palAppToken, "/api/users/deletion", "POST", { action: "schedule" })).status, 503);
+  assert.strictEqual((await authed(palAppToken, "/api/users/deletion", "POST", { action: "schedule" })).status, 200);
   env.DB.users.get("regular_user_123").status = "scheduled";
   env.DB.users.get("regular_user_123").deletionAt = Date.now() - 1;
   const messagesBeforeBlockedCleanup = env.DB.messages.size;
