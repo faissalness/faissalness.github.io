@@ -277,3 +277,10 @@ This is the newest status and supersedes earlier statements above where they con
 - The Pages workflow triggered by the progress-only commit `4c5fb96` failed during deployment: its retry found duplicate `github-pages` artifacts in the same workflow run. The previously deployed application commit `b89cf11` had a successful Pages deployment and its live assets were verified.
 - Updated `.github/workflows/deploy-pages.yml` to give the upload artifact a unique name per workflow run and attempt, and pass that exact name to the deploy action. This prevents a retry from selecting ambiguous artifacts.
 - Deployment workflow `44673234340` and emulator workflow `44673235181` both succeeded for commit `f59d83e`. After deployment, Pages `/`, `/pip/`, `/qr/`, `/app.js`, and Worker root/count endpoints all returned HTTP 200; live `app.js` includes the corrected Auth scope declaration.
+
+### Preventing partial account deletion — 2026-11-20
+
+- Review found that the browser deleted Firestore Notes before asking the Worker to delete Firebase Auth and D1. A Worker failure therefore left an account and data only partly deleted; attachments were also not covered by the browser deletion loop.
+- Removed the client-side Firestore deletion and the Worker's incomplete Auth/D1 finalization. Until a trusted service can delete every store, scheduling and finalization now fail closed with explicit `503` responses and no data changes. Existing scheduled requests remain cancellable, including after their deadline, so users are not permanently locked out while complete deletion is unavailable.
+- The PIP UI hides unavailable schedule/finalize actions and reports that deletion is not configured; for an already-scheduled account it explains no data was removed and offers cancellation.
+- Local Worker authorization test passed, including assertions that rejected finalization preserves Firebase Auth, the D1 account and messages. The complete local suite passed **220/220**; Auth **18/18**, Firestore **37/37**, and Playwright **1/1** passed with synthetic accounts. These safety changes have not yet been deployed; deployment is pending after final review.

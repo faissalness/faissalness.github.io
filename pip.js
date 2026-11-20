@@ -1,6 +1,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
 import { connectAuthEmulator, createUserWithEmailAndPassword, EmailAuthProvider, getAuth, onAuthStateChanged, reauthenticateWithCredential, sendEmailVerification, sendPasswordResetEmail, signInWithEmailAndPassword, signOut, updateProfile } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
-import { addDoc, collection, connectFirestoreEmulator, deleteDoc, doc, documentId, getDoc, getDocs, getFirestore, limit, onSnapshot, orderBy, query, serverTimestamp, setDoc, startAfter, Timestamp, updateDoc, writeBatch } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+import { addDoc, collection, connectFirestoreEmulator, deleteDoc, doc, getDoc, getDocs, getFirestore, onSnapshot, orderBy, query, serverTimestamp, setDoc, startAfter, Timestamp, updateDoc } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 import { firebaseConfig } from "./firebase-config.js";
 import { decryptNotePayload, encryptNotePayload } from "./note-crypto.mjs";
 
@@ -640,10 +640,10 @@ async function syncAccountLifecycle(user) {
   const notesLayout = $("#pip-notes-layout");
 
   if (scheduled) {
-    statusNode.textContent = `Deletion requested. Your notes are locked until ${deletionTime?.toLocaleString() || "the end of the 30-day grace period"}. Sign in after that date and confirm to permanently delete your account and notes.`;
+    statusNode.textContent = "Deletion is pending, but secure full account deletion is not configured. No data has been removed. Cancel the request to restore access.";
     scheduleButton.hidden = true;
-    cancelButton.hidden = !deletionTime || due;
-    finalizePanel.hidden = !due;
+    cancelButton.hidden = !deletionTime;
+    finalizePanel.hidden = true;
     notesLayout.hidden = true;
     unsubscribe?.();
     unsubscribe = null;
@@ -651,8 +651,8 @@ async function syncAccountLifecycle(user) {
     selectedId = null;
     renderNotes();
   } else {
-    statusNode.textContent = "Your account is active. You can request deletion with a 30-day grace period.";
-    scheduleButton.hidden = false;
+    statusNode.textContent = "Your account is active. Secure full account deletion is not configured, so new deletion requests are unavailable.";
+    scheduleButton.hidden = true;
     cancelButton.hidden = true;
     finalizePanel.hidden = true;
     notesLayout.hidden = false;
@@ -697,17 +697,6 @@ $("#pip-cancel-deletion").addEventListener("click", async () => {
   finally { button.disabled = false; }
 });
 
-async function erasePersonalNotes(uid) {
-  const notesQuery = () => query(noteCollection(uid), orderBy(documentId()), limit(200));
-  while (true) {
-    const page = await getDocs(notesQuery());
-    if (page.empty) return;
-    const batch = writeBatch(db);
-    page.docs.forEach(note => batch.delete(note.ref));
-    await batch.commit();
-  }
-}
-
 $("#pip-finalize-deletion-form").addEventListener("submit", async event => {
   event.preventDefault();
   if (!activeUser?.email || accountDeletion?.deletionStatus !== "ready") return;
@@ -719,8 +708,6 @@ $("#pip-finalize-deletion-form").addEventListener("submit", async event => {
     const credential = EmailAuthProvider.credential(activeUser.email, $("#pip-delete-password").value);
     await reauthenticateWithCredential(activeUser, credential);
     await activeUser.getIdToken(true);
-    await erasePersonalNotes(activeUser.uid);
-    await deleteDoc(doc(db, "yourNotes", activeUser.uid));
     await palApi("/api/users/finalize-deletion", { method: "POST", body: JSON.stringify({ confirmed: true }) });
     activeUser = null;
     accountDeletion = null;
@@ -730,7 +717,9 @@ $("#pip-finalize-deletion-form").addEventListener("submit", async event => {
   } catch (error) {
     const message = error.code === "auth/invalid-credential" || error.code === "auth/wrong-password"
       ? "The password did not match. Your account is unchanged."
-      : "Deletion could not be completed. Your account remains available; sign in again and retry.";
+      : error.message === "Secure full account deletion is not configured. No data was removed."
+        ? error.message
+        : "Deletion could not be completed. Your account and data remain unchanged; sign in again and retry.";
     status(message, "error");
   } finally { button.disabled = false; }
 });

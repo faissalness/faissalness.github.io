@@ -64,6 +64,7 @@ const userToken = makeTestJwt({
 (async () => {
   console.log("=== WORKER BACKEND TEST SUITE ===\n");
   const originalFetch = global.fetch;
+  let firebaseAuthDeleteRequests = 0;
   global.fetch = async (input, init) => {
     if (String(input) === "https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com") {
       return new Response(JSON.stringify({ [TEST_KID]: TEST_CERT }), {
@@ -72,6 +73,7 @@ const userToken = makeTestJwt({
       });
     }
     if (String(input).startsWith("https://identitytoolkit.googleapis.com/v1/accounts:delete")) {
+      firebaseAuthDeleteRequests++;
       return new Response(JSON.stringify({}), { status: 200, headers: { "Content-Type": "application/json" } });
     }
     return originalFetch(input, init);
@@ -407,22 +409,32 @@ const userToken = makeTestJwt({
   assert.strictEqual((await authed(thirdAppToken, "/api/pals/regular_user_123/messages")).status, 403, "Unrelated users cannot read a Pal conversation by changing its UID");
   const conversation = await (await authed(palAppToken, "/api/pals/hDbzbNTC7pOuU2UFCjFksopbgaG3/messages")).json();
   assert.ok(conversation.messages.some(message => message.body === "A private Post It 💌"), "Pals can exchange UTF-8 private messages");
-  assert.strictEqual((await authed(palAppToken, "/api/users/deletion", "POST", { action: "schedule" })).status, 200);
+  assert.strictEqual((await authed(palAppToken, "/api/users/deletion", "POST", { action: "schedule" })).status, 503,
+    "New deletion requests are blocked until complete trusted deletion is configured");
+  assert.strictEqual(env.DB.users.get("regular_user_123").status, "active", "A blocked request must not lock or schedule an account");
+  env.DB.users.get("regular_user_123").status = "scheduled";
+  env.DB.users.get("regular_user_123").deletionAt = Date.now() + 60_000;
   const countDuringGrace = await (await worker.fetch(new Request("https://api.local/api/users/count"), {}, {})).json();
   assert.strictEqual(countDuringGrace.count, 1, "Scheduled accounts are immediately excluded from active user count");
   assert.strictEqual((await authed(palAppToken, "/api/pals")).status, 403, "Scheduled deletion suspends Post It Pal access");
-  assert.strictEqual((await authed(palAppToken, "/api/users/deletion", "POST", { action: "cancel" })).status, 200);
-  assert.strictEqual((await authed(palAppToken, "/api/users/deletion", "POST", { action: "schedule" })).status, 200);
   assert.strictEqual((await authed(palAppToken, "/api/users/finalize-deletion", "POST", { confirmed: true })).status, 409, "Deletion cannot be finalized before 30 days");
+  env.DB.users.get("regular_user_123").deletionAt = Date.now() - 1;
+  assert.strictEqual((await authed(palAppToken, "/api/users/deletion", "POST", { action: "cancel" })).status, 200,
+    "A scheduled account remains cancellable while secure deletion is unavailable");
+  assert.strictEqual(env.DB.users.get("regular_user_123").status, "active");
+  assert.strictEqual((await authed(palAppToken, "/api/users/deletion", "POST", { action: "schedule" })).status, 503);
+  env.DB.users.get("regular_user_123").status = "scheduled";
   env.DB.users.get("regular_user_123").deletionAt = Date.now() - 1;
   const messagesBeforeBlockedCleanup = env.DB.messages.size;
   await implementation.scheduled({}, env, {});
   assert.strictEqual(env.DB.users.get("regular_user_123").status, "scheduled", "A due account must remain suspended when full trusted deletion is unavailable");
   assert.strictEqual(env.DB.messages.size, messagesBeforeBlockedCleanup, "Scheduled cleanup must not partially erase data before full deletion is available");
-  assert.strictEqual((await authed(palAppToken, "/api/users/finalize-deletion", "POST", { confirmed: true })).status, 200, "A due, reauthenticated deletion removes the user's Pal records");
-  const countAfterDeletion = await (await worker.fetch(new Request("https://api.local/api/users/count"), {}, {})).json();
-  assert.strictEqual(countAfterDeletion.count, 1, "Finalized deletion updates the public aggregate without exposing account identity");
-  console.log(" PASS: User aggregate, privacy-preserving Pal lookup, invitation acceptance, message isolation and deletion suspension verified.");
+  assert.strictEqual((await authed(palAppToken, "/api/users/finalize-deletion", "POST", { confirmed: true })).status, 503,
+    "Finalization fails closed until all trusted data stores can be deleted");
+  assert.ok(env.DB.users.has("regular_user_123"), "A blocked finalization must preserve the account record");
+  assert.strictEqual(env.DB.messages.size, messagesBeforeBlockedCleanup, "A blocked finalization must preserve messages");
+  assert.strictEqual(firebaseAuthDeleteRequests, 0, "A blocked finalization must not delete Firebase Auth first");
+  console.log(" PASS: User aggregate, privacy-preserving Pal lookup, invitation acceptance, message isolation and fail-closed deletion verified.");
 
   console.log("\n=== ALL WORKER BACKEND TESTS PASSED SUCCESSFULLY! ===");
   global.fetch = originalFetch;

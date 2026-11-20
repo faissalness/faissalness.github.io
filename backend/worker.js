@@ -12,7 +12,6 @@
 
 const OWNER_UID = "hDbzbNTC7pOuU2UFCjFksopbgaG3";
 const PROJECT_ID = "fj-website-384fd";
-const FIREBASE_WEB_API_KEY = "AIzaSyD17U-rz-QefHSQ85EWj09O1vMQRsbZGcE";
 const SITE_ORIGIN = "https://faissalness.github.io";
 const GOOGLE_CERTS_URL = "https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com";
 
@@ -524,16 +523,13 @@ export default {
         const identity = await readIdentity();
         if (!identity || identity.email_verified !== true) return new Response(JSON.stringify({ error: "Verified sign-in required" }), { status: identity ? 403 : 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         const body = await request.json();
-        const now = Date.now();
         const account = await env.DB.prepare("SELECT status, deletion_at AS deletionAt FROM registered_users WHERE uid = ?").bind(identity.sub).first();
         if (!account) return new Response(JSON.stringify({ error: "PIP account not found" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         if (body.action === "schedule") {
-          const deletionAt = now + 30 * 24 * 60 * 60 * 1000;
-          await env.DB.prepare("UPDATE registered_users SET status = 'scheduled', deletion_at = ? WHERE uid = ? AND status = 'active'").bind(deletionAt, identity.sub).run();
-          return new Response(JSON.stringify({ success: true, deletionAt }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+          return new Response(JSON.stringify({ error: "Secure full account deletion is not configured. Your account was not scheduled." }), { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         }
         if (body.action === "cancel") {
-          const result = await env.DB.prepare("UPDATE registered_users SET status = 'active', deletion_at = NULL WHERE uid = ? AND status = 'scheduled' AND deletion_at > ? RETURNING uid").bind(identity.sub, now).first();
+          const result = await env.DB.prepare("UPDATE registered_users SET status = 'active', deletion_at = NULL WHERE uid = ? AND status = 'scheduled' RETURNING uid").bind(identity.sub).first();
           if (!result) return new Response(JSON.stringify({ error: "Deletion cannot be cancelled" }), { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } });
           return new Response(JSON.stringify({ success: true }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         }
@@ -550,25 +546,10 @@ export default {
         if (!identity || identity.email_verified !== true || !Number.isInteger(identity.auth_time) || nowSeconds - identity.auth_time > 300) return new Response(JSON.stringify({ error: "Recent verified sign-in required" }), { status: identity ? 403 : 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         const body = await request.json();
         if (body.confirmed !== true || typeof identity.email !== "string") return new Response(JSON.stringify({ error: "Explicit confirmation required" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-        const emailDigest = await emailLookupDigest(identity.email.trim().toLowerCase(), env.PAL_LOOKUP_SECRET);
         const due = await env.DB.prepare("SELECT uid FROM registered_users WHERE uid = ? AND status = 'scheduled' AND deletion_at <= ?")
           .bind(identity.sub, Date.now()).first();
         if (!due) return new Response(JSON.stringify({ error: "The 30-day grace period has not ended" }), { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-        const authHeader = request.headers.get("Authorization") || "";
-        const idToken = authHeader.replace(/^Bearer\s+/i, "");
-        const authDelete = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:delete?key=${FIREBASE_WEB_API_KEY}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ idToken })
-        });
-        if (!authDelete.ok) return new Response(JSON.stringify({ error: "Firebase account deletion could not be confirmed" }), { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-        await env.DB.batch([
-          env.DB.prepare("DELETE FROM pip_messages WHERE sender_uid = ? OR recipient_uid = ?").bind(identity.sub, identity.sub),
-          env.DB.prepare("DELETE FROM pals WHERE uid_low = ? OR uid_high = ?").bind(identity.sub, identity.sub),
-          env.DB.prepare("DELETE FROM pal_invitations WHERE inviter_uid = ? OR recipient_uid = ? OR email_digest = ?").bind(identity.sub, identity.sub, emailDigest),
-          env.DB.prepare("DELETE FROM registered_users WHERE uid = ?").bind(identity.sub)
-        ]);
-        return new Response(JSON.stringify({ success: true }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        return new Response(JSON.stringify({ error: "Secure full account deletion is not configured. No data was removed." }), { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       } catch (_) {
         return new Response(JSON.stringify({ error: "Post It Pal account data could not be removed" }), { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
