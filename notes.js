@@ -16,10 +16,6 @@ if (location.hostname === "127.0.0.1" || location.hostname === "localhost") {
 
 // DOM Elements
 const $ = sel => document.querySelector(sel);
-const gate = $("#unauthorized-gate");
-const gateForm = $("#notes-gate-form");
-const gatePasswordInput = $("#notes-gate-password");
-const gateFeedback = $("#gate-feedback");
 const topbar = $("#topbar");
 
 const notesApp = $("#notes-app");
@@ -55,9 +51,6 @@ let currentUser = null;
 let isOwner = false;
 let isNotesUnlocked = false;
 let sessionExpiresAt = 0;
-let failedAttempts = 0;
-let lockoutUntil = 0;
-let isVerifying = false;
 let resolveInitialAuthState;
 const initialAuthState = new Promise(resolve => { resolveInitialAuthState = resolve; });
 
@@ -109,57 +102,21 @@ async function sha256DigestHex(str) {
   return bufferToHex(digest);
 }
 
-// Focus the neon password input when gate appears
-function focusGateInput() {
-  if (gatePasswordInput && !gate.hidden) {
-    setTimeout(() => {
-      try { gatePasswordInput.focus(); } catch (_) {}
-    }, 80);
-  }
-}
-focusGateInput();
+function lockNotesGate() {
+  isNotesUnlocked = false;
+  sessionExpiresAt = 0;
+  clearPrivateNotesFromMemory();
 
-function discreetGateError() {
-  if (gatePasswordInput) {
-    gatePasswordInput.classList.add("gate-error");
-    gatePasswordInput.value = "";
+  if (unsubscribeNotes) {
+    unsubscribeNotes();
+    unsubscribeNotes = null;
   }
-  if (gateFeedback) {
-    gateFeedback.classList.remove("gate-feedback-message");
-    gateFeedback.replaceChildren();
-    gateFeedback.classList.add("active-error");
-  }
-  setTimeout(() => {
-    if (gatePasswordInput) {
-      gatePasswordInput.classList.remove("gate-error");
-      gatePasswordInput.focus();
-    }
-    if (gateFeedback) {
-      gateFeedback.classList.remove("active-error");
-    }
-  }, 600);
-}
 
-function showGateMessage(message, linkToHome = false) {
-  if (!gateFeedback) return;
-  gateFeedback.classList.remove("active-error");
-  gateFeedback.classList.add("gate-feedback-message");
-  gateFeedback.replaceChildren(document.createTextNode(message));
-  if (linkToHome) {
-    const link = document.createElement("a");
-    link.href = "/";
-    link.textContent = "FJ Home";
-    gateFeedback.append(" ", link);
-  }
+  topbar.hidden = true;
+  notesApp.hidden = true;
+  manageAdminsBtn.hidden = true;
+  adminDrawer.hidden = true;
 }
-
-function clearGateMessage() {
-  if (!gateFeedback) return;
-  gateFeedback.classList.remove("gate-feedback-message");
-  gateFeedback.replaceChildren();
-}
-
-gatePasswordInput?.addEventListener("input", clearGateMessage);
 
 // IndexedDB Storage for Attachments & Offline Notes
 const IDB_NAME = "FJ_NOTES_DB";
@@ -232,51 +189,7 @@ function clearPrivateNotesFromMemory() {
 }
 
 // Persistent lock gate enforcement
-function lockNotesGate() {
-  isNotesUnlocked = false;
-  sessionExpiresAt = 0;
-  clearPrivateNotesFromMemory();
-
-  if (unsubscribeNotes) {
-    unsubscribeNotes();
-    unsubscribeNotes = null;
-  }
-
-  gate.hidden = false;
-  topbar.hidden = true;
-  notesApp.hidden = true;
-  manageAdminsBtn.hidden = true;
-  adminDrawer.hidden = true;
-
-  focusGateInput();
-}
-
-function denyCurrentSession() {
-  lockNotesGate();
-  showGateMessage("Notes authorization was denied or revoked. Notes remain locked.");
-}
-
-async function verifyNotesCredentials(enteredPassword) {
-  const user = auth.currentUser;
-  if (!user) return { status: "authentication-required" };
-
-  const userIsOwner = (user.uid === ownerUid);
-
-  // The original Notes store is owner-only. Administrators for personal Notes
-  // applications must never inherit access to the owner's private records.
-  if (!userIsOwner) return { status: "not-owner" };
-
-  // Owner: the main Firebase account password is the master key. The owner
-  // bypasses the shared Notes password and the trusted-session gate.
-  currentUser = user;
-  isOwner = true;
-  isNotesUnlocked = true;
-  sessionExpiresAt = Date.now() + (12 * 3600 * 1000);
-  return { status: "verified" };
-}
-
 function unlockNotesApp() {
-  gate.hidden = true;
   topbar.hidden = false;
   notesApp.hidden = false;
   manageAdminsBtn.hidden = !isOwner;
@@ -285,59 +198,7 @@ function unlockNotesApp() {
   initNotesRealtime();
 }
 
-// Gate Form Submission: Enter key in neon-green input
-if (gateForm) {
-  gateForm.addEventListener("submit", async event => {
-    event.preventDefault();
-    if (isVerifying) return;
-
-    if (Date.now() < lockoutUntil) {
-      discreetGateError();
-      return;
-    }
-
-    const password = gatePasswordInput.value.trim();
-    if (!password) return;
-
-    isVerifying = true;
-    gatePasswordInput.disabled = true;
-
-    try {
-      await initialAuthState;
-      const result = await verifyNotesCredentials(password);
-      if (result.status === "verified") {
-        failedAttempts = 0;
-        clearGateMessage();
-        unlockNotesApp();
-      } else if (result.status === "authentication-required") {
-        gatePasswordInput.value = "";
-        showGateMessage("Sign in to the owner account, then return here.", true);
-      } else if (result.status === "not-owner") {
-        gatePasswordInput.value = "";
-        showGateMessage("This account cannot access this Notes collection.", true);
-      } else if (result.status === "trusted-session-unavailable") {
-        gatePasswordInput.value = "";
-        showGateMessage("A trusted Notes session is missing, expired, or revoked. Notes remain locked.");
-      } else if (result.status === "service-error") {
-        gatePasswordInput.value = "";
-        showGateMessage("Notes access could not be verified. No private notes were opened. Try again later.");
-      } else {
-        failedAttempts++;
-        if (failedAttempts >= 5) {
-          lockoutUntil = Date.now() + 30000; // 30s rate-limit lockout
-        }
-        discreetGateError();
-      }
-    } catch (err) {
-      discreetGateError();
-    } finally {
-      gatePasswordInput.disabled = false;
-      isVerifying = false;
-    }
-  });
-}
-
-// Auth State Changed: Ensures gate is persistent on load or sign-out
+// Notes uses the main FJ website session only — there is no second login.
 onAuthStateChanged(auth, async user => {
   if (resolveInitialAuthState) {
     resolveInitialAuthState();
@@ -347,6 +208,9 @@ onAuthStateChanged(auth, async user => {
     currentUser = null;
     isOwner = false;
     lockNotesGate();
+    // Users authenticate through the main FJ website; there is no separate
+    // login here, so unauthenticated visitors return to the main website.
+    window.location.href = "/";
     return;
   }
 
@@ -354,9 +218,8 @@ onAuthStateChanged(auth, async user => {
   currentUser = user;
   isOwner = (user.uid === ownerUid);
 
-  // Owner: the main Firebase account credentials are the master key. The owner
-  // bypasses the trusted-session and secondary Notes gates and enters Notes
-  // immediately after sign-in; the neon password gates are for ordinary users.
+  // The owner bypasses the trusted-session and secondary Notes gates and
+  // enters Notes immediately after main-website authentication.
   if (isOwner) {
     isNotesUnlocked = true;
     sessionExpiresAt = Date.now() + (12 * 3600 * 1000);
@@ -364,14 +227,8 @@ onAuthStateChanged(auth, async user => {
     return;
   }
 
-  // If session has expired or notes is not yet unlocked with shared password,
-  // ensure the gate remains strictly locked!
-  if (!isNotesUnlocked || Date.now() > sessionExpiresAt) {
-    lockNotesGate();
-    return;
-  }
-
-  if (!isOwner) lockNotesGate();
+  // Notes is exclusively the owner's application; other accounts are locked.
+  lockNotesGate();
 });
 // Notes CRUD & Realtime Listener
 function initNotesRealtime() {
@@ -397,7 +254,7 @@ function initNotesRealtime() {
 
     if (err.code === "permission-denied") {
       console.error("Firestore authorization was revoked or denied.");
-      denyCurrentSession();
+      lockNotesGate();
       return;
     }
 

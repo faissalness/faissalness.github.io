@@ -1,5 +1,5 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
-import { connectAuthEmulator, createUserWithEmailAndPassword, EmailAuthProvider, getAuth, onAuthStateChanged, reauthenticateWithCredential, sendEmailVerification, sendPasswordResetEmail, signInWithEmailAndPassword, signOut, updateProfile } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+import { connectAuthEmulator, getAuth, onAuthStateChanged, reauthenticateWithCredential, signOut, EmailAuthProvider } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 import { addDoc, collection, connectFirestoreEmulator, deleteDoc, doc, getDoc, getDocs, getFirestore, onSnapshot, orderBy, query, serverTimestamp, setDoc, startAfter, Timestamp, updateDoc } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 import { firebaseConfig } from "./firebase-config.js";
 import { decryptNotePayload, encryptNotePayload } from "./note-crypto.mjs";
@@ -13,14 +13,10 @@ if (location.hostname === "127.0.0.1") {
   connectFirestoreEmulator(db, "127.0.0.1", 8080);
 }
 const API = "https://fj-api.jimyass.workers.dev";
-const AUTH_ACTION_URL = location.hostname === "127.0.0.1"
-  ? `${location.origin}/pip/`
-  : "https://faissalness.github.io/pip/";
 let activeUser = null;
 let selectedId = null;
 let unsubscribe = null;
 let notes = [];
-let emailVerificationUser = null;
 let accountDeletion = null;
 let selectedPalUid = null;
 let palRefreshTimer = null;
@@ -32,19 +28,6 @@ function stopPendingApprovalPoll() {
     clearInterval(pendingApprovalTimer);
     pendingApprovalTimer = null;
   }
-}
-const REMEMBERED_PIP_EMAIL = "fj-pip-remembered-email";
-
-function rememberedPipEmail() {
-  try { return localStorage.getItem(REMEMBERED_PIP_EMAIL) || ""; } catch { return ""; }
-}
-
-function rememberPipEmail(email) {
-  try { localStorage.setItem(REMEMBERED_PIP_EMAIL, email); } catch {}
-}
-
-function clearRememberedPipEmail() {
-  try { localStorage.removeItem(REMEMBERED_PIP_EMAIL); } catch {}
 }
 
 async function palApiForUser(user, path, options = {}) {
@@ -732,114 +715,14 @@ $("#pip-finalize-deletion-form").addEventListener("submit", async event => {
   } finally { button.disabled = false; }
 });
 
-$("#pip-register-form").addEventListener("submit", async event => {
-  event.preventDefault();
-  const button = event.currentTarget.querySelector('button[type="submit"]');
-  button.disabled = true;
-  let createdUser = null;
-  try {
-    const name = $("#pip-register-name").value.trim();
-    const email = $("#pip-register-email").value.trim().toLowerCase();
-    const credential = await createUserWithEmailAndPassword(auth, email, $("#pip-register-password").value);
-    createdUser = credential.user;
-    await updateProfile(credential.user, { displayName: name });
-    rememberPipEmail(email);
-    $("#pip-welcome").textContent = name ? `${name}'s Notes.` : "Your Notes.";
-    await sendEmailVerification(credential.user, { url: AUTH_ACTION_URL, handleCodeInApp: false });
-    await ensureFirestoreAccountRecords(credential.user);
-    status("Check your inbox for the verification link to activate Your Notes.", "success");
-  } catch (error) {
-    if (error.code === "auth/email-already-in-use") {
-      $("#pip-login-email").value = $("#pip-register-email").value.trim().toLowerCase();
-      status("This account already exists. Sign in with its current password, or use Forgot password to recover access.", "error");
-    }
-    else if (error.code === "auth/weak-password") status("Use a password with at least 8 characters.", "error");
-    else if (error.code === "auth/invalid-email") status("Enter a valid email address.", "error");
-    else if (error.code === "auth/operation-not-allowed") status("Email and password sign-in is unavailable. Contact the site owner.", "error");
-    else if (createdUser) status("The account was created, but setup did not finish. Sign in after verifying your email; you can resend the verification link from the next screen.", "error");
-    else status("Could not create the account. Check the details and try again.", "error");
-  } finally { button.disabled = false; }
-});
-
-$("#pip-login-form").addEventListener("submit", async event => {
-  event.preventDefault();
-  const button = event.currentTarget.querySelector('button[type="submit"]');
-  button.disabled = true;
-  try {
-    const email = $("#pip-login-email").value.trim().toLowerCase();
-    await signInWithEmailAndPassword(auth, email, $("#pip-login-password").value);
-    rememberPipEmail(email);
-  } catch (error) {
-    if (error.code === "auth/too-many-requests") status("Too many sign-in attempts. Wait a little, then try again or use Forgot password.", "error");
-    else if (error.code === "auth/network-request-failed") status("Sign-in could not reach Firebase. Check your connection and try again.", "error");
-    else if (error.code === "auth/user-disabled") status("This account is disabled. Contact the site owner for help.", "error");
-    else if (["auth/invalid-credential", "auth/wrong-password", "auth/user-not-found"].includes(error.code)) {
-      status("Email or password did not match. If this account is unverified, sign in with the correct password to resend verification; use Forgot password if needed.", "error");
-    } else status("Sign-in could not be completed. Try again, or use Forgot password to recover access.", "error");
-  }
-  finally { button.disabled = false; }
-});
-
-$("#pip-reset").addEventListener("click", async () => {
-  const email = $("#pip-login-email").value.trim().toLowerCase();
-  if (!email) return status("Enter your email address first.", "info");
-  try { await sendPasswordResetEmail(auth, email, { url: AUTH_ACTION_URL, handleCodeInApp: false }); }
-  catch { /* Keep the response indistinguishable to reduce account enumeration. */ }
-  status("If an account matches that address, a password reset link will arrive by email.", "success");
-});
-
+// PIP and Your Notes authenticate through the main FJ website only — there is
+// no second login here. Unauthenticated users are sent back to the main site.
 $("#pip-sign-out").addEventListener("click", async () => {
   try {
     await signOut(auth);
     showPrivateNotes(null);
   }
   catch { status("Could not sign out. Try again.", "error"); }
-});
-
-$("#pip-verify-sign-out").addEventListener("click", async () => { await signOut(auth); });
-$("#pip-returning-form").addEventListener("submit", async event => {
-  event.preventDefault();
-  const email = rememberedPipEmail();
-  const passwordInput = $("#pip-returning-password");
-  if (!email) return;
-  passwordInput.disabled = true;
-  try {
-    await signInWithEmailAndPassword(auth, email, passwordInput.value);
-  } catch (error) {
-    passwordInput.value = "";
-    passwordInput.classList.add("gate-error");
-    $("#pip-returning-feedback").classList.add("active-error");
-    setTimeout(() => {
-      passwordInput.classList.remove("gate-error");
-      $("#pip-returning-feedback").classList.remove("active-error");
-    }, 700);
-  } finally {
-    passwordInput.disabled = false;
-  }
-});
-$("#pip-switch-account").addEventListener("click", () => {
-  clearRememberedPipEmail();
-  $("#pip-returning").hidden = true;
-  $("#pip-auth").classList.remove("pip-returning-mode");
-  $("#pip-login-form").hidden = false;
-  $("#pip-register-form").hidden = false;
-  $("#pip-auth").hidden = false;
-  $("#pip-login-email").value = "";
-  $("#pip-login-password").value = "";
-  $("#pip-login-email").focus();
-});
-$("#pip-resend-verification").addEventListener("click", async () => {
-  try { await sendEmailVerification(emailVerificationUser, { url: AUTH_ACTION_URL, handleCodeInApp: false }); status("A fresh verification link has been sent.", "success"); }
-  catch { status("Could not send a new verification link yet. Wait a moment and try again.", "error"); }
-});
-$("#pip-check-verified").addEventListener("click", async () => {
-  try {
-    await emailVerificationUser.reload();
-    emailVerificationUser = auth.currentUser;
-    if (!emailVerificationUser?.emailVerified) return status("The email is not verified yet. Open the link, then retry.", "info");
-    await emailVerificationUser.getIdToken(true);
-    showPrivateNotes(emailVerificationUser);
-  } catch { status("Could not check verification status. Try again.", "error"); }
 });
 
 $("#pip-new-note").addEventListener("click", () => selectNote(null));
@@ -888,7 +771,6 @@ $("#pip-delete-note").addEventListener("click", async () => {
 });
 
 async function showPrivateNotes(user) {
-  emailVerificationUser = null;
   if (!user) {
     activeUser = null;
     $("#pip-notes").hidden = true;
@@ -913,7 +795,6 @@ async function showPrivateNotes(user) {
     if (registration.status !== "active" || registration.pipStatus !== "active") {
       activeUser = null;
       $("#pip-auth").hidden = true;
-      $("#pip-auth").classList.remove("pip-returning-mode");
       $("#pip-notes").hidden = true;
       status("Your PIP and Your Notes access is pending owner approval.", "info");
       stopPendingApprovalPoll();
@@ -933,14 +814,12 @@ async function showPrivateNotes(user) {
   } catch (error) {
     activeUser = null;
     $("#pip-auth").hidden = true;
-    $("#pip-auth").classList.remove("pip-returning-mode");
     $("#pip-notes").hidden = true;
     status(error.message || "Could not verify application access.", "error");
     return;
   }
   stopPendingApprovalPoll();
   activeUser = user;
-  $("#pip-verify").hidden = true;
   $("#pip-auth").hidden = Boolean(user);
   $("#pip-notes").hidden = !user;
   $("#pip-status").hidden = true;
@@ -967,37 +846,12 @@ async function showPrivateNotes(user) {
   }
 }
 
+// PIP and Your Notes use the main FJ website session only — there is no
+// second login. Users sign in through the main website; unauthenticated
+// sessions are sent back there.
 onAuthStateChanged(auth, user => {
-  if (user && !user.emailVerified) {
-    activeUser = null;
-    emailVerificationUser = user;
-    unsubscribe?.();
-    unsubscribe = null;
-    $("#pip-auth").hidden = true;
-    $("#pip-notes").hidden = true;
-    $("#pip-verify").hidden = false;
-    return;
-  }
-  $("#pip-verify").hidden = true;
   if (!user) {
-    const remembered = rememberedPipEmail();
-    if (remembered) {
-      $("#pip-auth").hidden = false;
-      $("#pip-auth").classList.add("pip-returning-mode");
-      $("#pip-returning").hidden = false;
-      $("#pip-login-form").hidden = true;
-      $("#pip-register-form").hidden = true;
-      $("#pip-returning-email").textContent = remembered;
-      $("#pip-returning-password").value = "";
-      setTimeout(() => $("#pip-returning-password").focus(), 50);
-    } else {
-      $("#pip-auth").classList.remove("pip-returning-mode");
-      $("#pip-returning").hidden = true;
-      $("#pip-login-form").hidden = false;
-      $("#pip-register-form").hidden = false;
-      $("#pip-auth").hidden = false;
-    }
-    showPrivateNotes(null);
+    window.location.href = "/";
     return;
   }
   showPrivateNotes(user);

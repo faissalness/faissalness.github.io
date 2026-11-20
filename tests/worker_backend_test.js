@@ -605,6 +605,36 @@ const userToken = makeTestJwt({
 
   console.log(" PASS: Owner approval dashboard enforces owner access, granular PIP/Notes statuses, and registration semantics.");
 
+  // --- Ground Zero 00: owner-only account endpoints ---
+  const gzDb = new FakeD1();
+  gzDb.users.set("gz_user_a", { uid: "gz_user_a", registeredAt: Date.now(), displayName: "Ground Zero User", status: "active", pipStatus: "active", notesStatus: "active", deletionAt: null });
+  const gzEnv = { DB: gzDb, PAL_LOOKUP_SECRET: env.PAL_LOOKUP_SECRET };
+  const gzWorker = { fetch: (request, _env, ctx) => implementation.fetch(request, gzEnv, ctx) };
+
+  const gzAccountsResp = await gzWorker.fetch(new Request("https://api.local/api/admin/accounts", { headers: { Authorization: `Bearer ${verifiedOwnerToken}` } }), {}, {});
+  assert.strictEqual(gzAccountsResp.status, 200, "Owner may list Ground Zero accounts");
+  const gzAccounts = await gzAccountsResp.json();
+  assert.ok(Array.isArray(gzAccounts.accounts) && gzAccounts.accounts.some(a => a.uid === "gz_user_a"), "Ground Zero accounts list returns registered accounts");
+  const gzOrdinaryAccounts = await ordinaryWorker.fetch(new Request("https://api.local/api/admin/accounts", { headers: { Authorization: `Bearer ${ordinaryFlowToken}` } }), {}, {});
+  assert.strictEqual(gzOrdinaryAccounts.status, 403, "Ordinary users cannot list Ground Zero accounts");
+  const gzNoAuth = await gzWorker.fetch(new Request("https://api.local/api/admin/accounts"), {}, {});
+  assert.strictEqual(gzNoAuth.status, 401, "Unauthenticated requests are denied the Ground Zero account list");
+
+  const gzSuspendResp = await gzWorker.fetch(new Request("https://api.local/api/admin/accounts/gz_user_a/suspend", { method: "POST", headers: { Authorization: `Bearer ${verifiedOwnerToken}`, "Content-Type": "application/json" }, body: "{}" }), {}, {});
+  assert.strictEqual(gzSuspendResp.status, 200, "Owner may suspend an account");
+  assert.strictEqual(gzDb.users.get("gz_user_a").status, "scheduled", "Suspension sets the account status to scheduled");
+  const gzReactivateResp = await gzWorker.fetch(new Request("https://api.local/api/admin/accounts/gz_user_a/reactivate", { method: "POST", headers: { Authorization: `Bearer ${verifiedOwnerToken}`, "Content-Type": "application/json" }, body: "{}" }), {}, {});
+  assert.strictEqual(gzReactivateResp.status, 200, "Owner may reactivate an account");
+  assert.strictEqual(gzDb.users.get("gz_user_a").status, "active", "Reactivation restores the account");
+  assert.strictEqual(gzDb.users.get("gz_user_a").pipStatus, "active", "Reactivation restores PIP access");
+  const gzDeleteResp = await gzWorker.fetch(new Request("https://api.local/api/admin/accounts/gz_user_a/delete", { method: "POST", headers: { Authorization: `Bearer ${verifiedOwnerToken}`, "Content-Type": "application/json" }, body: "{}" }), {}, {});
+  assert.strictEqual(gzDeleteResp.status, 200, "Owner may delete an account");
+  assert.strictEqual(gzDb.users.has("gz_user_a"), false, "Deleting an account removes the D1 record");
+  const gzUnknown = await gzWorker.fetch(new Request("https://api.local/api/admin/accounts/does_not_exist/suspend", { method: "POST", headers: { Authorization: `Bearer ${verifiedOwnerToken}`, "Content-Type": "application/json" }, body: "{}" }), {}, {});
+  assert.strictEqual(gzUnknown.status, 404, "Suspending an unknown account is a 404");
+
+  console.log(" PASS: Ground Zero 00 account endpoints enforce owner access and support suspend/reactivate/delete.");
+
   console.log("\n=== ALL WORKER BACKEND TESTS PASSED SUCCESSFULLY! ===");
   global.fetch = originalFetch;
 })();

@@ -15,6 +15,7 @@
   <header class="topbar" id="topbar" hidden>
     <a class="site-mark" id="fj" href="/" aria-label="FJ home">FJ</a>
     <nav id="site-nav" class="site-nav" aria-label="Private pages">
+      <a href="/ground-zero/" id="gz-nav" aria-label="Ground Zero 00" title="Ground Zero 00" hidden>Ground Zero 00</a>
       <a href="/meet/">Meet me <span>01</span></a>
       <a href="/gods/">To the gods <span>02</span></a>
       <a href="/notes/" aria-current="page">Notes <span>03</span></a>
@@ -23,26 +24,6 @@
       <button class="icon-button signout" id="sign-out" type="button" aria-label="Sign out" title="Sign out">⇥</button>
     </nav>
   </header>
-
-  <!-- Initial mandatory gate text: exactly "you can't come in here" with persistent neon-green unlabeled password input -->
-  <div id="unauthorized-gate" class="gate-forbidden" aria-live="polite">
-    <div class="gate-lock-container">
-      <p id="gate-text" class="gate-message">You can't come in here</p>
-      <form id="notes-gate-form" class="gate-password-form" autocomplete="off">
-        <input 
-          type="password" 
-          id="notes-gate-password" 
-          class="neon-gate-input" 
-          aria-label="Notes access password"
-          autocomplete="current-password" 
-          spellcheck="false"
-          autocapitalize="off"
-          required
-        >
-        <div id="gate-feedback" class="gate-feedback-indicator" role="status" aria-live="polite"></div>
-      </form>
-    </div>
-  </div>
 
   <!-- Main Protected Notes Section -->
   <main id="notes-app" class="protected-page notes-page" hidden>

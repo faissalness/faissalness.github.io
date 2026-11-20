@@ -15,6 +15,7 @@
   <header class="topbar">
     <a class="site-mark" href="/" aria-label="FJ home">FJ</a>
     <nav class="site-nav" aria-label="FJ pages">
+      <a href="/ground-zero/" id="gz-nav" aria-label="Ground Zero 00" title="Ground Zero 00" hidden>Ground Zero 00</a>
       <a href="/meet/">Meet me <span>01</span></a>
       <a href="/gods/">To the gods <span>02</span></a>
       <a href="/notes/">Notes <span>03</span></a>
@@ -27,40 +28,7 @@
     <section id="pip-auth" class="pip-auth">
       <p class="eyebrow">FJ / PRIVATE FREQUENCY / 04</p>
       <h1>PIP and<br><span>Your Notes.</span></h1>
-      <p class="pip-copy">A private notes space for your account.</p>
-      <section id="pip-returning" class="gate-forbidden pip-returning" hidden>
-        <div class="gate-lock-container">
-          <p class="gate-message">Welcome back.</p>
-          <p id="pip-returning-email" class="micro-note"></p>
-          <form id="pip-returning-form" class="gate-password-form">
-            <label class="sr-only" for="pip-returning-password">PIP account password</label>
-            <input type="password" id="pip-returning-password" class="neon-gate-input" autocomplete="current-password" required>
-            <div id="pip-returning-feedback" class="gate-feedback-indicator" aria-live="polite"></div>
-          </form>
-          <button id="pip-switch-account" class="text-button" type="button">Use another account</button>
-        </div>
-      </section>
-      <div class="pip-auth-grid">
-        <form id="pip-login-form" class="auth-card">
-          <p class="card-index">01 / RETURNING</p><h2>Sign in</h2>
-          <label for="pip-login-email">Email</label><input id="pip-login-email" type="email" autocomplete="username" required>
-          <label for="pip-login-password">Password</label><input id="pip-login-password" type="password" autocomplete="current-password" required>
-          <button class="primary-button" type="submit">Sign in <span>↗</span></button>
-          <button class="text-button pip-reset" id="pip-reset" type="button">Send password reset link</button>
-        </form>
-        <form id="pip-register-form" class="auth-card">
-          <p class="card-index">02 / FIRST VISIT</p><h2>Create account</h2>
-          <label for="pip-register-name">Your name</label><input id="pip-register-name" autocomplete="name" maxlength="60" required>
-          <label for="pip-register-email">Email</label><input id="pip-register-email" type="email" autocomplete="email" required>
-          <label for="pip-register-password">Password</label><input id="pip-register-password" type="password" autocomplete="new-password" minlength="8" required>
-          <button class="primary-button" type="submit">Create account <span>↗</span></button>
-        </form>
-      </div>
-    </section>
-    <section id="pip-verify" class="pip-verify" hidden>
-      <p class="eyebrow">CHECK YOUR INBOX</p><h1>Verify your<br><span>email.</span></h1>
-      <p class="pip-copy">Open the verification link sent to your email address, then return here.</p>
-      <div class="pip-verify-actions"><button id="pip-check-verified" class="primary-button" type="button">I verified my email <span>↻</span></button><button id="pip-resend-verification" class="text-button" type="button">Send another link</button><button id="pip-verify-sign-out" class="text-button" type="button">Sign out</button></div>
+      <p class="pip-copy">A private notes space for your account. Users authenticate on the main FJ website — there is no separate PIP login.</p>
     </section>
     <section id="pip-notes" class="pip-notes" hidden>
       <div class="pip-heading"><div><p class="eyebrow">YOUR PRIVATE SPACE</p><h1 id="pip-welcome">Your Notes.</h1></div><button id="pip-sign-out" class="text-button" type="button">Sign out ↗</button></div>

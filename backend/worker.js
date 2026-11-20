@@ -478,6 +478,63 @@ export default {
       }
     }
 
+    // Ground Zero 00 account backend: owner-only account listing and account
+    // actions (suspend / reactivate / delete). Website and PIP/Notes permissions
+    // stay in the separate Firestore structures; this endpoint enforces the
+    // account/suspension state.
+    if (url.pathname === "/api/admin/accounts" && request.method === "GET") {
+      try {
+        const identity = await readIdentity();
+        if (!identity || identity.sub !== OWNER_UID || identity.email_verified !== true) {
+          return new Response(JSON.stringify({ error: "Owner access required" }), { status: identity ? 403 : 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+        const result = await env.DB.prepare(`SELECT uid, display_name AS displayName, status, pip_status AS pipStatus, notes_status AS notesStatus, registered_at AS registeredAt, deletion_at AS deletionAt
+          FROM registered_users ORDER BY display_name COLLATE NOCASE, uid LIMIT 500`).all();
+        return new Response(JSON.stringify({ accounts: result.results || [] }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      } catch (_) {
+        return new Response(JSON.stringify({ error: "Accounts unavailable" }), { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+    }
+
+    const gzAccountPathMatch = /^\/api\/admin\/accounts\/([A-Za-z0-9_-]{1,128})(?:\/(suspend|reactivate|delete))?$/.exec(url.pathname);
+    if (gzAccountPathMatch && request.method === "POST" && gzAccountPathMatch[2]) {
+      try {
+        const identity = await readIdentity();
+        if (!identity || identity.sub !== OWNER_UID || identity.email_verified !== true) {
+          return new Response(JSON.stringify({ error: "Owner access required" }), { status: identity ? 403 : 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+        const uid = gzAccountPathMatch[1];
+        const action = gzAccountPathMatch[2];
+        const account = await env.DB.prepare("SELECT status, deletion_at AS deletionAt FROM registered_users WHERE uid = ?").bind(uid).first();
+        if (!account) {
+          return new Response(JSON.stringify({ error: "Account not found" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+        if (action === "suspend") {
+          await env.DB.prepare("UPDATE registered_users SET status = 'scheduled', deletion_at = NULL WHERE uid = ?").bind(uid).run();
+        } else if (action === "reactivate") {
+          await env.DB.prepare("UPDATE registered_users SET status = 'active', pip_status = 'active', notes_status = 'active', deletion_at = NULL WHERE uid = ?").bind(uid).run();
+        } else if (action === "delete") {
+          const related = [
+            ["DELETE FROM profile_photos WHERE uid = ?", [uid]],
+            ["DELETE FROM pal_invitations WHERE inviter_uid = ? OR recipient_uid = ?", [uid, uid]],
+            ["DELETE FROM pals WHERE uid_low = ? OR uid_high = ?", [uid, uid]],
+            ["DELETE FROM pip_messages WHERE sender_uid = ? OR recipient_uid = ?", [uid, uid]],
+            ["DELETE FROM social_posts WHERE author_uid = ?", [uid]],
+            ["DELETE FROM rate_limits WHERE rate_key LIKE ?", [`${uid}%`]],
+            ["DELETE FROM active_sessions WHERE uid = ?", [uid]]
+          ];
+          for (const [sql, values] of related) {
+            try { await env.DB.prepare(sql).bind(...values).run(); } catch (_) { /* cleanup best effort */ }
+          }
+          await env.DB.prepare("DELETE FROM registered_users WHERE uid = ?").bind(uid).run();
+        }
+        const after = await env.DB.prepare("SELECT uid, status, pip_status AS pipStatus, notes_status AS notesStatus, deletion_at AS deletionAt FROM registered_users WHERE uid = ?").bind(uid).first();
+        return new Response(JSON.stringify({ success: true, uid, action, account: after || null }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      } catch (_) {
+        return new Response(JSON.stringify({ error: "Account action unavailable" }), { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+    }
+
     if (url.pathname === "/api/profiles" && request.method === "GET") {
       try {
         const identity = await readIdentity();

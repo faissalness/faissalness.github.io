@@ -33,12 +33,15 @@ jobs:
           set -euo pipefail
           mkdir -p dist
           for file in \
-            index.html meet.html gods.html notes.html random.html qr.html pip.html \
-            app.js private-page.js notes.js pip.js note-crypto.mjs random.js qr-client.js qr-tech.js qr-url.js destinations.js \
+            index.html meet.html gods.html notes.html random.html qr.html pip.html ground-zero.html \
+            app.js private-page.js notes.js pip.js ground-zero.js note-crypto.mjs random.js qr-client.js qr-tech.js qr-url.js destinations.js \
             firebase-config.js styles.css favicon.svg qr.png random-qr.png; do
             test -f "$file"
             cp -- "$file" dist/
           done
+          mkdir -p dist/ground-zero
+          cp -- ground-zero.html dist/ground-zero/index.html
+          sed -i '/<head>/a\  <base href="/">' dist/ground-zero/index.html
           mkdir -p dist/qr
           cp -- qr.html dist/qr/index.html
           sed -i '/<head>/a\  <base href="/">' dist/qr/index.html

@@ -246,9 +246,10 @@ service cloud.firestore {
         && (validDeletionCancellation()
             || validDeletionReadyTransition()
             || (resource.data.deletionStatus == 'active' && validDeletionSchedule()));
-      allow delete: if verifiedAccount()
-        && request.auth.uid == userUid
-        && personalDeletionReady(userUid);
+      allow delete: if owner()
+        || (verifiedAccount()
+          && request.auth.uid == userUid
+          && personalDeletionReady(userUid));
     }
 
     // Each Your Notes user has a separate UID-scoped private notes tree.

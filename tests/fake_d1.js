@@ -28,6 +28,10 @@ class FakeD1 {
           const user = db.users.get(args[0]);
           return user ? { status: user.status, pipStatus: user.pipStatus || "pending", notesStatus: user.notesStatus || "pending" } : null;
         }
+        if (sql.includes("SELECT uid, status, pip_status AS pipStatus, notes_status AS notesStatus, deletion_at AS deletionAt")) {
+          const user = db.users.get(args[0]);
+          return user ? { uid: user.uid, status: user.status, pipStatus: user.pipStatus || "pending", notesStatus: user.notesStatus || "pending", deletionAt: user.deletionAt } : null;
+        }
         if (sql.includes("SELECT pip_status AS pipStatus, notes_status AS notesStatus FROM registered_users")) {
           const user = db.users.get(args[0]);
           return user ? { pipStatus: user.pipStatus || "pending", notesStatus: user.notesStatus || "pending" } : null;
@@ -112,6 +116,9 @@ class FakeD1 {
           db.profilePhotos.set(args[0], { mimeType: args[1], imageData: args[2], size: args[3], updatedAt: args[4] });
         } else if (sql.includes("DELETE FROM profile_photos")) {
           db.profilePhotos.delete(args[0]);
+        } else if (sql.includes("UPDATE registered_users SET status = 'scheduled', deletion_at = NULL WHERE uid = ?")) {
+          const user = db.users.get(args[0]);
+          if (user && user.status === "active") { user.status = "scheduled"; user.deletionAt = null; }
         } else if (sql.includes("UPDATE registered_users SET status = 'scheduled'")) {
           const user = db.users.get(args[1]); if (user && user.status === "active") { user.status = "scheduled"; user.deletionAt = args[0]; }
         } else if (sql.includes("INSERT INTO pal_invitations")) {

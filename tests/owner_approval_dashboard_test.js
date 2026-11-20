@@ -45,14 +45,14 @@ console.log(" PASS: Owner bypass and permission gates enforced in Firestore rule
 // 2. Owner Notes page: master key bypass
 console.log("\n2. Checking Owner Notes Bypass (notes.js)...");
 const notesJs = fs.readFileSync(path.join(ROOT, 'notes.js'), 'utf8');
-assert.ok(notesJs.includes("const userIsOwner = (user.uid === ownerUid);"),
-  'Owner detection must be by immutable UID');
-assert.ok(notesJs.includes("// Owner: the main Firebase account password is the master key."),
-  'The owner Notes path must be explicitly marked as master key');
+assert.ok(notesJs.includes("isOwner = (user.uid === ownerUid);"),
+  'Owner is identified by the immutable UID');
+assert.ok(notesJs.includes("The owner bypasses the trusted-session and secondary Notes gates"),
+  'The owner Notes path must be explicitly marked as the master key');
 assert.ok(notesJs.includes("isNotesUnlocked = true"),
-  'Owner must unlock the Notes page without the trusted-session gate');
-assert.ok(!/trusted-session-unavailable/.test(notesJs) || notesJs.includes("return { status: \"not-owner\" }"),
-  'Ordinary users must not receive the owner path');
+  'Owner must unlock the Notes page immediately after main-website authentication');
+assert.ok(notesJs.includes('window.location.href = "/"'),
+  'Unauthenticated users must be redirected to the main website');
 console.log(" PASS: Owner Notes access bypasses password and trusted-session gates.");
 
 // 3. Owner master access on the main website (app.js)

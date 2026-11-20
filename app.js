@@ -164,13 +164,21 @@ function humanChallenge() {
 
 humanChallenge();
 
-function revealMainPage(user) {
+async function revealMainPage(user) {
   $("#human-gate").hidden = true;
   $("#auth-shell").hidden = true;
   $("#site-nav").hidden = false;
   $("#private-home").hidden = false;
   $("#private-home").classList.add("home-reveal");
   if ($("#owner-open")) $("#owner-open").hidden = user.uid !== ownerUid;
+  if ($("#gz-nav")) {
+    // Ground Zero 00 is visible to the owner and explicitly authorized admins.
+    let isGzAdmin = user.uid === ownerUid;
+    if (!isGzAdmin) {
+      try { isGzAdmin = (await getDoc(doc(db, "admins", user.uid))).exists(); } catch (_) { /* fall back to hidden */ }
+    }
+    $("#gz-nav").hidden = !isGzAdmin;
+  }
   document.body.classList.remove("auth-pending");
   animateMagneticTiles();
 }

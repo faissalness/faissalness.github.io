@@ -203,6 +203,13 @@ class RulesSimulator {
       return false;
     }
 
+    // Account lifecycle document: deletion state lives here; the owner may
+    // delete the account unconditionally.
+    if (collection === 'yourNotes' && parts.length === 2) {
+      if (operation === 'delete' && owner) return true;
+      return false;
+    }
+
     // 9. Per-user private notes; the UID is taken from the path and auth context.
     if (collection === 'yourNotes' && parts.length === 4 && parts[2] === 'notes') {
       const ownsPath = verifiedAccount() && auth.uid === parts[1];
@@ -211,7 +218,11 @@ class RulesSimulator {
       const account = this.db.yourNotes[parts[1]];
       const active = !account || account.deletionStatus === 'active';
       const due = account?.deletionStatus === 'ready';
-      if (operation === 'read' || operation === 'delete') return permissionActive && (active || due);
+      if (operation === 'read') return ownsPath && permissionActive && (active || due);
+      if (operation === 'delete') {
+        if (owner) return true;
+        return permissionActive && due;
+      }
       if (!active || !permissionActive) return false;
       if (!data || !Array.isArray(Object.keys(data))) return false;
       const keys = Object.keys(data);
@@ -247,7 +258,7 @@ class RulesSimulator {
 
 const sim = new RulesSimulator(mockDb);
 let passedCount = 0;
-let totalCount = 71;
+let totalCount = 74;
 
 function runTest(num, name, condition) {
   assert.ok(condition, `Test ${num} FAILED: ${name}`);
@@ -494,5 +505,20 @@ runTest(71, "Owner reads their own Your Notes without an applicationPermissions 
     return allowed;
   })());
 
+runTest(72, "Owner deletes any user's Your Notes account -> ALLOWED",
+  sim.evaluate({ auth: { uid: OWNER_UID }, path: `yourNotes/${USER_UID}`, operation: "delete" }) === true);
+
+runTest(73, "Ordinary user deletes their account without deletion-ready state -> DENIED",
+  sim.evaluate({ auth: { uid: USER_UID, emailVerified: true }, path: `yourNotes/${USER_UID}`, operation: "delete" }) === false);
+
+runTest(74, "Owner deletes a user account whose Your Notes are not deletion-ready -> ALLOWED",
+  (() => {
+    const original = sim.db.yourNotes[OTHER_USER_UID];
+    delete sim.db.yourNotes[OTHER_USER_UID];
+    const allowed = sim.evaluate({ auth: { uid: OWNER_UID }, path: `yourNotes/${OTHER_USER_UID}`, operation: "delete" }) === true;
+    if (original !== undefined) sim.db.yourNotes[OTHER_USER_UID] = original;
+    return allowed;
+  })());
+
 console.log(`\n=== FIRESTORE RULES VERIFICATION RESULT: ${passedCount} / ${totalCount} PASSED ===`);
-assert.strictEqual(passedCount, 71, "All 71 Firestore rules simulator cases must pass!");
+assert.strictEqual(passedCount, 74, "All 74 Firestore rules simulator cases must pass!");

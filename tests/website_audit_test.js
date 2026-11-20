@@ -78,15 +78,21 @@ const appScript = fs.readFileSync(path.join(ROOT, 'app.js'), 'utf8');
 assert.ok(appScript.includes('let auth = null;') && appScript.includes('auth = getAuth(app)'),
   'The shared site sign-out handler must close over the initialized Firebase Auth instance');
 assert.ok(pipPage.includes('PIP and<br><span>Your Notes.</span>')
-  && pipScript.includes('This account already exists.')
-  && pipScript.includes('Forgot password to recover access')
   && pipScript.includes('ensureFirestoreAccountRecords')
-  && pipScript.includes('sendEmailVerification'),
-  'PIP and Notes 04 must provide idempotent account setup, verified email, reset, and duplicate-account recovery');
-assert.ok(pipPage.includes('id="pip-returning"') && pipPage.includes('id="pip-returning-password"')
-  && pipScript.includes('signInWithEmailAndPassword(auth, email, passwordInput.value)')
-  && pipPage.includes('id="pip-switch-account"'),
-  'Returning PIP users must receive a real password-only Firebase sign-in screen with account switching');
+  && pipScript.includes('/api/users/register'),
+  'PIP and Notes 04 must provide idempotent account setup and server-side registration records');
+assert.ok(!pipPage.includes('id="pip-login-form"') && !pipPage.includes('id="pip-register-form"')
+  && !pipPage.includes('id="pip-returning"') && !pipScript.includes('signInWithEmailAndPassword')
+  && !pipScript.includes('createUserWithEmailAndPassword') && !pipScript.includes('sendPasswordResetEmail'),
+  'The separate PIP/Notes login screens must be removed; authentication happens on the main FJ website only');
+assert.ok(pipScript.includes('window.location.href = "/"') && pipScript.includes('onAuthStateChanged(auth, user'),
+  'PIP and Notes must redirect unauthenticated users back to the main FJ website');
+const indexHtml = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+const groundZeroNavFirst = indexHtml.indexOf('id="gz-nav"') > -1 && indexHtml.indexOf('id="gz-nav"') < indexHtml.indexOf('href="/meet/"');
+assert.ok(groundZeroNavFirst && indexHtml.includes('Ground Zero 00'),
+  'Ground Zero 00 must be the first navigation entry before Meet 01');
+assert.ok(appScript.includes('gz-nav') && appScript.includes('await getDoc(doc(db, "admins", user.uid))'),
+  'The main site must reveal Ground Zero 00 to the owner and authorized admins');
 assert.ok(pipScript.includes('/api/users/register') && fs.readFileSync(path.join(ROOT, 'backend', 'worker.js'), 'utf8').includes('/api/admin/permissions')
   && fs.readFileSync(path.join(ROOT, 'backend', 'worker.js'), 'utf8').includes('/api/admin/users')
   && fs.readFileSync(path.join(ROOT, 'backend', 'worker.js'), 'utf8').includes('/api/admin/lookup'),
@@ -105,19 +111,16 @@ assert.ok(appScript.includes('Your request is waiting for approval. Once approve
 assert.ok(appScript.includes('const isApproved = isOwnerSession || (profile.exists() && profile.data().approved === true);'),
   'The main website gate requires account approval for non-owner users');
 const notesScript = fs.readFileSync(path.join(ROOT, 'notes.js'), 'utf8');
-assert.ok(notesScript.includes('isOwner = true') && notesScript.includes('isNotesUnlocked = true'),
+assert.ok(notesScript.includes('isOwner = (user.uid === ownerUid);') && notesScript.includes('isNotesUnlocked = true'),
   'The owner bypasses the Notes gate and enters Notes immediately after authentication');
 assert.ok(appScript.includes('loadOwnerUsers') && appScript.includes('dashAction')
   && appScript.includes('/api/admin/permissions'),
   'The owner approval dashboard must let the owner approve and revoke individual applications');
-assert.ok(pipScript.includes('.value.trim().toLowerCase()')
-  && pipScript.includes('pip-returning-mode')
-  && pipScript.includes('showOwnProfilePhoto')
+assert.ok(pipScript.includes('showOwnProfilePhoto')
   && fs.readFileSync(path.join(ROOT, 'backend', 'worker.js'), 'utf8').includes('/photo')
   && fs.existsSync(path.join(ROOT, 'backend', 'migrations', '0008_profile_photos.sql')),
-  'PIP login casing, password-only returning state, and trusted profile photo storage must be implemented');
-assert.ok(pipScript.includes('AUTH_ACTION_URL') && pipScript.includes('handleCodeInApp: false')
-  && fs.readFileSync(path.join(ROOT, 'app.js'), 'utf8').includes('handleCodeInApp: false'),
+  'Trusted profile photo storage must be implemented for PIP accounts');
+assert.ok(fs.readFileSync(path.join(ROOT, 'app.js'), 'utf8').includes('handleCodeInApp: false'),
   'Production verification/reset emails must use explicit Pages action continuation URLs');
 assert.ok(pipPage.includes('pip-note-attachments') && pipScript.includes('uploadPipAttachments')
   && fs.readFileSync(path.join(ROOT, 'firestore.rules'), 'utf8').includes('/attachments/{attachmentId}')
