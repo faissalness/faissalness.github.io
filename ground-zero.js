@@ -1,11 +1,11 @@
 /**
- * Ground Zero 00 — Owner/Admin Control Center
+ * Ground Zero 00 ΓÇö Owner/Admin Control Center
  *
  * Two distinct permission systems:
- *  - Website authorization: Firestore `users/{uid}.approved` — gates the main
+ *  - Website authorization: Firestore `users/{uid}.approved` ΓÇö gates the main
  *    FJ website (app.js sign-in gate). Enforced by Firestore rules (owner update).
  *  - PIP + Your Notes authorization: D1 `registered_users.pip_status/notes_status`
- *    + the Firestore `applicationPermissions/{uid}` mirror — enforced by the
+ *    + the Firestore `applicationPermissions/{uid}` mirror ΓÇö enforced by the
  *    Worker backend (accountIsActive) and Firestore rules
  *    (applicationPermissionActive).
  *
@@ -22,12 +22,16 @@ const $ = sel => document.querySelector(sel);
 const status = $("#gz-status");
 const API = "https://fj-api.jimyass.workers.dev";
 
-const app = initializeApp(firebaseConfig, "FJGroundZero");
+// Use the default Firebase app instance so this page reads the same persisted
+// auth state that the main site (app.js) wrote during sign-in. Firebase namespaces
+// auth persistence per app name, so a custom instance name here would create a
+// parallel auth state store and hide the restored owner session.
+const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 if (location.hostname === "127.0.0.1") {
-  connectAuthEmulator(auth, "http://127.0.0.1:9099", { disableWarnings: true });
-  connectFirestoreEmulator(db, "127.0.0.1", 8080);
+  try { connectAuthEmulator(auth, "http://127.0.0.1:9099", { disableWarnings: true }); } catch (_) {}
+  try { connectFirestoreEmulator(db, "127.0.0.1", 8080); } catch (_) {}
 }
 
 let accounts = [];
@@ -68,7 +72,7 @@ function badge(value) {
 }
 
 function brief(uid) {
-  return uid ? uid.slice(0, 8) + "…" : "";
+  return uid ? uid.slice(0, 8) + "ΓÇª" : "";
 }
 
 async function workerAction(path, body) {
@@ -168,8 +172,8 @@ async function loadAccounts() {
 // --- Actions: website vs PIP/Notes stay separate permission systems ---
 
 async function runAction(uid, label, kind, action, button) {
-  setBusy(button, true, "Working…");
-  setStatus(`Working on ${label}…`);
+  setBusy(button, true, "WorkingΓÇª");
+  setStatus(`Working on ${label}ΓÇª`);
   try {
     if (kind === "website") {
       // Website authorization: Firestore users/{uid}.approved (owner-only writes via rules).
@@ -229,7 +233,7 @@ async function authorizeAdmin() {
 }
 
 async function deactivateAdmin(uid, button) {
-  setBusy(button, true, "Deactivating…");
+  setBusy(button, true, "DeactivatingΓÇª");
   try {
     await updateDoc(doc(db, "admins", uid), { active: false });
     setStatus(`Admin ${uid} deactivated.`, "success");
@@ -253,7 +257,7 @@ function renderAdmins() {
     const row = document.createElement("div");
     row.className = "gz-admin-row";
     const text = document.createElement("span");
-    text.textContent = `${data.email || uid} (${uid})${data.active === false ? " — inactive" : ""}`;
+    text.textContent = `${data.email || uid} (${uid})${data.active === false ? " ΓÇö inactive" : ""}`;
     const button = document.createElement("button");
     button.type = "button";
     button.textContent = data.active === false ? "Reactivate" : "Deactivate";
@@ -274,60 +278,66 @@ $("#gz-admin-form")?.addEventListener("submit", event => {
 
 function redirectHome() { window.location.href = "/"; }
 
-// Ground Zero 00 — deterministic auth state machine (per Firebase docs):
+// Ground Zero 00 ΓÇö deterministic auth state machine (per Firebase docs):
 //   INITIALIZING -> AUTHENTICATED -> AUTHORIZED
 //                -> UNAUTHORIZED (settled but not owner/admin)
-//                -> ERROR      (settled, technical failure — shown, not redirected)
+//                -> ERROR      (settled, technical failure ΓÇö shown, not redirected)
 // Never redirect during INITIALIZING; never treat backend errors as "signed out".
 let gzStatus = "INITIALIZING";
 let gzUser = null;
 
+function setGzStatus(state) { gzStatus = state; }
+
+function setGzError(message) {
+  setGzStatus("ERROR");
+  setStatus(message, "error");
+}
+
 function gzDisplayLoading() {
-  setStatus("Verifying access to Ground Zero 00…", "info");
+  setStatus("Verifying access to Ground Zero 00ΓÇª", "info");
   const table = $("#gz-accounts-table");
   if (table) table.hidden = true;
 }
 
-async function gzCheckAuthorization() {
-  if (!gzUser) { gzStatus = "UNAUTHORIZED"; redirectHome(); return; }
+async function gzCheckAuthorization(user) {
+  await gzWaitForAuthSettled();
+  if (!user) { gzStatus = "UNAUTHORIZED"; redirectHome(); return; }
+  gzUser = user;
+  setGzStatus("AUTHENTICATED");
+  let authorized = false;
   if (gzUser.uid === ownerUid) {
     // The owner bypasses every application and permission state.
-    gzStatus = "AUTHORIZED";
+    authorized = true;
   } else {
     try { await loadAdmins(); } catch (_) { admins = new Map(); }
     renderAdmins();
     if (admins.has(gzUser.uid)) {
-      gzStatus = "AUTHORIZED";
-    } else {
-      gzStatus = "UNAUTHORIZED";
-      setStatus("Ground Zero 00 is exclusively for the owner and authorized admins.", "error");
-      redirectHome();
-      return;
+      const adminRecord = admins.get(gzUser.uid);
+      authorized = Boolean(adminRecord) && adminRecord.active !== false;
     }
+  }
+  if (!authorized) {
+    gzStatus = "UNAUTHORIZED";
+    setStatus("Ground Zero 00 is exclusively for the owner and authorized admins.", "error");
+    redirectHome();
+    return;
   }
   gzStatus = "AUTHORIZED";
   setStatus("");
-  try { await loadAccounts(); } catch (error) { setStatus(`Could not load accounts: ${error.message}`, "error"); }
+  try { await loadAccounts(); } catch (error) { setGzError(`Could not load accounts: ${error.message}`); }
+}
+
+async function gzWaitForAuthSettled() {
+  // Official deterministic settlement signal (auth.authStateReady()). The
+  // onAuthStateChanged listener registration itself awaits Auth initialization
+  // before invoking its callback, so evaluation never runs mid-INITIALIZING.
+  try { await auth.authStateReady(); } catch (_) { /* use the settled user from the listener */ }
 }
 
 onAuthStateChanged(auth, async user => {
   gzDisplayLoading();
-  if (user) {
-    gzUser = user;
-    await gzCheckAuthorization();
-    return;
-  }
-  // No user yet: never redirect during INITIALIZING. Wait for auth-state
-  // settlement via the official API (auth.authStateReady()), then re-check.
-  try {
-    await auth.authStateReady();
-  } catch (_) {
-    // Older/limited SDKs: fall back to polling the current user.
-    for (let attempt = 0; attempt < 10 && !auth.currentUser; attempt += 1) {
-      await new Promise(resolve => setTimeout(resolve, 200));
-    }
-  }
-  gzUser = auth.currentUser;
-  if (!gzUser) { gzStatus = "UNAUTHORIZED"; redirectHome(); return; }
-  await gzCheckAuthorization();
+  await gzCheckAuthorization(user);
+}, authError => {
+  // Technical failures surface as ERROR and are shown ΓÇö never disguised as signed-out states.
+  setGzError(`Ground Zero 00 access check failed: ${authError?.message || "unknown error"}`);
 });
