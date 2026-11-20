@@ -243,3 +243,31 @@ This status supersedes earlier completion notes where they conflict, including t
 - Live QR payload independently decodes to the generated Wikipedia destination at both tested viewport sizes. Its only visible text is the existing top navigation.
 - Production API `https://fj-api.jimyass.workers.dev` and `/api/count` return HTTP 200. Anonymous profile-photo access returns 401. Firestore unauthenticated REST reads to `privateNotes` and `activeNotesSessions` remain 403.
 - Cloudflare D1 migration `0008_profile_photos.sql` is applied; latest Worker version is `ddae51c1-313c-4fef-ad05-e313f934a443`. Production D1 still has only the owner's active PIP/Notes registration and zero stored profile photos; the other two authorized identities have no D1 profile/permission rows.
+
+### Current continuation — 2026-11-20 (commit b89cf11)
+
+This is the newest status and supersedes earlier statements above where they conflict:
+
+- Fixed PIP duplicate-registration messaging and recovery guidance, actionable Firebase sign-in errors, and deterministic repair of missing UID-keyed profile/access-request records after sign-in. Fixed the homepage shared sign-out handler's Firebase Auth scope.
+- Implemented the explicitly requested verified-email local-part `fj` suffix eligibility for application approval in the Worker and Firestore rules. This is not an administrator grant. Explicit `revoked` application permissions take precedence; unverified and mismatched identities are not approved.
+- Hardened the legacy approval trigger to require the verified Firebase email to match the UID and email exactly. It no longer rewrites addresses or claims an email was delivered when only a link was generated. This trigger is not connected to a deployed Functions runtime.
+- The scheduled deletion path now fails closed when trusted Firebase administration is unavailable; due accounts remain suspended and their data is not partially deleted or falsely reported as deleted.
+- Added `tests/run_acceptance.ps1` for source checks, local regression suites, optional emulators, read-only production Auth inventory, Worker dry-run, D1 migration inventory, and live HTTP checks.
+- `tests/run_acceptance.ps1 -SkipEmulators`: **220 passed, 0 failed** in local suites, including 56 Worker backend assertions, 60 Firestore logic cases, 13 QR engine checks, and 10 independent QR decodes. The read-only Auth audit reported four accounts and did not modify or email any account. Cloudflare Worker dry-run succeeded; no remote D1 migrations were pending; Pages and Worker smoke routes returned HTTP 200.
+- Emulator coverage passed locally: Auth **18/18**, Firestore **37/37**, Playwright **1/1** using synthetic accounts. GitHub emulator workflow `44657539114` passed for commit `b89cf114dc5f07fe94ea267ea16d0e97668d6b40`.
+- GitHub Pages deployment workflow `44657539287` passed for that commit. The live `/app.js` returned HTTP 200 and contained the corrected shared Auth declaration; live `/`, `/pip/`, `/qr/`, Worker root, and Worker public-count routes returned HTTP 200.
+- Cloudflare Worker version `6122459a-e2b7-46df-b8ef-36770b3f9832` and Firestore rules were deployed in the preceding deployment step. No production user credential or record was changed.
+- Commit `b89cf114dc5f07fe94ea267ea16d0e97668d6b40` is pushed to `origin/main`. Existing unrelated untracked instructions, backups, configuration, migration, dependencies, and artifacts remain untouched.
+
+### Still incomplete or externally blocked
+
+- Production Firebase Console provider/domain/template settings and actual verification/reset email delivery, inbox receipt, and real action-link completion remain unverified. No production email was sent. The read-only Firebase CLI inventory cannot verify Console settings or access a mailbox.
+- `/notes/` still has no trusted server-side Firebase session issuer for `activeNotesSessions`; rules remain fail-closed. No Admin credential/service is configured for complete unattended deletion across Firebase Auth, Firestore, D1, and stored files. The deployed scheduled path therefore does not claim full deletion.
+- Real-account production authentication, profile-photo workflows, and multi-account social behavior were not exercised; local/emulator evidence is not production evidence. Physical iPhone/Android camera scanning was not performed; browser and independent decoder evidence is recorded above.
+- Approval/owner-notification email, complete Notes Trash/attachment retention behavior, and several original-specification items still need a scoped requirements reconciliation before completion. Do not treat the passing suite or deployment as proof these features are complete.
+
+### Required external verification
+
+- In Firebase Console, open `https://console.firebase.google.com/project/fj-website-384fd/authentication/providers` and confirm Email/Password is enabled. Under Authentication settings, confirm `faissalness.github.io` and the configured Firebase auth domain are authorized. Under Authentication > Templates, confirm verification and password-reset templates and their action URLs are appropriate for the production site. Do not change credentials or reset existing passwords.
+- To verify real email delivery, sign in to the authorized test mailbox outside this chat, request verification/reset only for an account whose owner has approved the test, open the received Firebase action link, and confirm the resulting status in the production account. No mailbox session was available here, so no delivery or link completion is claimed.
+- Physical QR verification: open `https://faissalness.github.io/qr/` on a desktop display. On iPhone, open Camera and point it at the QR; on Android, open Camera/Google Lens and point it at the QR. The expected preview target is `https://en.wikipedia.org/wiki/Alain_Tourret`. Report whether each device displays that exact destination; this has not been physically tested.
