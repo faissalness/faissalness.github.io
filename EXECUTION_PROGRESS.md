@@ -287,3 +287,14 @@ This is the newest status and supersedes earlier statements above where they con
 - The PIP UI hides unavailable schedule/finalize actions and reports that deletion is not configured; for an already-scheduled account it explains no data was removed and offers cancellation.
 - Local Worker authorization test passed, including assertions that rejected finalization preserves Firebase Auth, the D1 account and messages. The complete local suite passed **220/220**; Auth **18/18**, Firestore **37/37**, and Playwright **1/1** passed with synthetic accounts.
 - Commit `284bb8b` is pushed. Cloudflare Worker version `a64cda3f-4f68-483b-ba76-a4c36854c058` is deployed; Pages workflow `44679378915` and emulator workflow `44679378862` passed. Live `/`, `/pip/`, `/pip.js`, `/qr/`, Worker root, and public-count routes returned HTTP 200; an unauthenticated deletion-scheduling request returned HTTP 401. The deployed PIP script contains the fail-closed deletion message. No production user data was changed.
+
+### Production authentication fix — 2026-11-20
+
+- **Root cause identified**: Homepage (`app.js`) registration created Firebase Auth accounts with a random password (`${crypto.randomUUID()}Aa1!`), not the user's password. Users could not sign in because they didn't know the random password, and duplicate registration attempts failed with "email already in use".
+- **Fixed in `app.js`**: Registration now uses user-provided password (minimum 8 characters), sends email verification immediately, and creates Firestore records with `approved: false`.
+- **Fixed in `index.html`**: Added password field to the "Request access" form with proper validation (`required`, `minlength="8"`, `autocomplete="new-password"`).
+- **Added email verification enforcement**: `onAuthStateChanged` now checks `user.emailVerified` and signs out unverified users with a clear message.
+- **Updated success/error messages**: Registration success now says "Check your email to verify your address. Once verified and approved, you can sign in." Owner approval sends verification email (not password reset) since user already has password.
+- **Deployed**: Commit `0c255b5` pushed to `origin/main`. GitHub Pages deployment `44752974686` succeeded. Live `https://faissalness.github.io/` and `https://faissalness.github.io/pip/` return HTTP 200.
+- **Verified**: Deployed `app.js` contains password handling (`request-password`); deployed `index.html` contains password input in request form.
+- **All 220 regression tests pass** (13 suites).
