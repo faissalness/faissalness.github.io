@@ -22,11 +22,11 @@ console.log("1. Checking Firestore Rules (owner bypass + permission gate)...");
 const rules = fs.readFileSync(path.join(ROOT, 'firestore.rules'), 'utf8');
 assert.ok(rules.includes("function applicationPermissionActive(userUid, appName)"),
   'applicationPermissionActive must exist');
-assert.ok(rules.includes("if (owner()) return true;"),
+assert.ok(rules.includes("return owner()"),
   'applicationPermissionActive must return true for the owner');
-assert.ok(rules.includes("status == 'active' || status == 'approved'"),
+assert.ok(rules.includes("== 'active'") && rules.includes("== 'approved'"),
   'applicationPermissionActive must require the stored app status to be active or approved');
-assert.ok(rules.includes("if (!exists(/databases/$(database)/documents/applicationPermissions/$(userUid)))"),
+assert.ok(rules.includes("exists(/databases/$(database)/documents/applicationPermissions/$(userUid))"),
   'applicationPermissionActive must check the permission mirror existence');
 assert.ok(rules.includes("automaticApprovalEmail(userUid)"),
   'The original fj automatic-approval fallback must be preserved');

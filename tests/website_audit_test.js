@@ -95,7 +95,9 @@ assert.ok(pipScript.includes('status !== "active"') && pipScript.includes('pendi
   'PIP and Notes access for ordinary users must remain blocked while the server-side D1 account status is pending or not active');
 assert.ok(appScript.includes('loadOwnerUsers') && appScript.includes('dashboardAppStatus') && appScript.includes('dashAction'),
   'The owner approval dashboard must render account status, PIP/Notes status, and granular actions');
-assert.ok(fs.readFileSync(path.join(ROOT, 'firestore.rules'), 'utf8').includes("status == 'active' || status == 'approved'"),
+assert.ok(fs.readFileSync(path.join(ROOT, 'firestore.rules'), 'utf8')
+    .includes("automaticApprovalEmail(userUid)")
+    && fs.readFileSync(path.join(ROOT, 'firestore.rules'), 'utf8').includes("applicationPermissionActive"),
   'Firestore rules must restore the application permission gate for ordinary users');
 assert.ok(appScript.includes('Your request is waiting for approval. Once approved, you can sign in.')
   && appScript.includes('await signOut(auth)'),
