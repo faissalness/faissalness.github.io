@@ -24,7 +24,15 @@ let emailVerificationUser = null;
 let accountDeletion = null;
 let selectedPalUid = null;
 let palRefreshTimer = null;
+let pendingApprovalTimer = null;
 let protectedNoteUnlocked = false;
+
+function stopPendingApprovalPoll() {
+  if (pendingApprovalTimer) {
+    clearInterval(pendingApprovalTimer);
+    pendingApprovalTimer = null;
+  }
+}
 const REMEMBERED_PIP_EMAIL = "fj-pip-remembered-email";
 
 function rememberedPipEmail() {
@@ -884,6 +892,7 @@ async function showPrivateNotes(user) {
   if (!user) {
     activeUser = null;
     $("#pip-notes").hidden = true;
+    stopPendingApprovalPoll();
     clearInterval(palRefreshTimer);
     palRefreshTimer = null;
     unsubscribe?.();
@@ -899,21 +908,37 @@ async function showPrivateNotes(user) {
   try {
     await ensureFirestoreAccountRecords(user);
     const registration = await palApiForUser(user, "/api/users/register", { method: "POST", body: "{}" });
+    // Registration records the account in D1. Ordinary users wait for owner
+    // approval: their D1 account stays pending until the owner grants access.
     if (registration.status !== "active" || registration.pipStatus !== "active") {
       activeUser = null;
       $("#pip-auth").hidden = true;
       $("#pip-auth").classList.remove("pip-returning-mode");
       $("#pip-notes").hidden = true;
       status("Your PIP and Your Notes access is pending owner approval.", "info");
+      stopPendingApprovalPoll();
+      // Poll for the owner's approval instead of requiring a reload.
+      pendingApprovalTimer = setInterval(() => {
+        palApi("/api/users/register", { method: "POST", body: "{}" })
+          .then(registrationResult => {
+            if (registrationResult.status === "active") {
+              stopPendingApprovalPoll();
+              showPrivateNotes(user);
+            }
+          })
+          .catch(() => {});
+      }, 5000);
       return;
     }
   } catch (error) {
     activeUser = null;
     $("#pip-auth").hidden = true;
+    $("#pip-auth").classList.remove("pip-returning-mode");
     $("#pip-notes").hidden = true;
     status(error.message || "Could not verify application access.", "error");
     return;
   }
+  stopPendingApprovalPoll();
   activeUser = user;
   $("#pip-verify").hidden = true;
   $("#pip-auth").hidden = Boolean(user);

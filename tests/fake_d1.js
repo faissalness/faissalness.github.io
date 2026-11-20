@@ -18,7 +18,7 @@ class FakeD1 {
     const statement = {
       bind(...values) { args = values; return statement; },
       async first() {
-        if (sql.includes("COUNT(*) AS count FROM registered_users")) return { count: [...db.users.values()].filter(user => user.status === "active").length };
+        if (sql.includes("COUNT(*) AS count FROM registered_users")) return { count: [...db.users.values()].filter(user => user.status === "active" && (user.pipStatus || "pending") === "active").length };
         if (sql.includes("COUNT(*) AS count FROM pal_invitations")) return { count: [...db.palInvites.values()].filter(item => item.inviterUid === args[0] && item.createdAt > args[1]).length };
         if (sql.includes("COUNT(*) AS count FROM pip_messages")) return { count: [...db.messages.values()].filter(item => item.senderUid === args[0] && item.createdAt > args[1]).length };
         if (sql.includes("SELECT status, deletion_at AS deletionAt FROM registered_users")) {
@@ -36,7 +36,10 @@ class FakeD1 {
           const photo = db.profilePhotos.get(args[0]);
           return photo ? { mimeType: photo.mimeType, imageData: photo.imageData } : null;
         }
-        if (sql.includes("SELECT status FROM registered_users")) return db.users.get(args[0]) ? { status: db.users.get(args[0]).status } : null;
+        if (sql.includes("SELECT status, pip_status AS pipStatus FROM registered_users")) {
+          const user = db.users.get(args[0]);
+          return user ? { status: user.status, pipStatus: user.pipStatus || "pending" } : null;
+        }
         if (sql.includes("SELECT id, inviter_uid AS inviterUid FROM pal_invitations")) {
           const item = db.palInvites.get(args[0]);
           return item && item.emailDigest === args[1] && item.status === "pending" ? { id: item.id, inviterUid: item.inviterUid } : null;
@@ -72,7 +75,7 @@ class FakeD1 {
       },
       async run() {
         if (sql.includes("INSERT OR IGNORE INTO registered_users")) {
-          if (!db.users.has(args[0])) db.users.set(args[0], { uid: args[0], registeredAt: args[1], displayName: args[2], status: args[4], pipStatus: args[5] || "pending", notesStatus: args[6] || "pending", deletionAt: null });
+          if (!db.users.has(args[0])) db.users.set(args[0], { uid: args[0], registeredAt: args[1], displayName: args[2], status: args[4] ?? "active", pipStatus: args[5] ?? "pending", notesStatus: args[6] ?? "pending", deletionAt: null });
         } else if (sql.includes("UPDATE registered_users SET display_name")) {
           const user = db.users.get(args[1]); if (user) user.displayName = args[0];
         } else if (sql.includes("UPDATE registered_users SET status = 'active', pip_status = 'active'")) {
@@ -87,6 +90,24 @@ class FakeD1 {
         } else if (sql.includes("UPDATE registered_users SET pip_status = ?, notes_status = ?")) {
           const user = db.users.get(args[2]);
           if (user) { user.pipStatus = args[0]; user.notesStatus = args[1]; }
+        } else if (sql.includes("UPDATE registered_users SET status = 'active' WHERE uid = ? AND status = 'pending'")) {
+          const user = db.users.get(args[0]);
+          if (user && user.status === "pending") user.status = "active";
+        } else if (sql.includes("UPDATE registered_users SET status = 'active' WHERE uid = ?")) {
+          const user = db.users.get(args[0]);
+          if (user) user.status = "active";
+        } else if (sql.includes("UPDATE registered_users SET pip_status = 'active' WHERE uid = ?")) {
+          const user = db.users.get(args[0]);
+          if (user) user.pipStatus = "active";
+        } else if (sql.includes("UPDATE registered_users SET notes_status = 'active' WHERE uid = ?")) {
+          const user = db.users.get(args[0]);
+          if (user) user.notesStatus = "active";
+        } else if (sql.includes("UPDATE registered_users SET pip_status = 'revoked' WHERE uid = ?")) {
+          const user = db.users.get(args[0]);
+          if (user) user.pipStatus = "revoked";
+        } else if (sql.includes("UPDATE registered_users SET notes_status = 'revoked' WHERE uid = ?")) {
+          const user = db.users.get(args[0]);
+          if (user) user.notesStatus = "revoked";
         } else if (sql.includes("INSERT INTO profile_photos")) {
           db.profilePhotos.set(args[0], { mimeType: args[1], imageData: args[2], size: args[3], updatedAt: args[4] });
         } else if (sql.includes("DELETE FROM profile_photos")) {
@@ -130,6 +151,16 @@ class FakeD1 {
         return { success: true };
       },
       async all() {
+        if (sql.includes("FROM registered_users")) {
+          return { results: [...db.users.values()].map(user => ({
+            uid: user.uid,
+            displayName: user.displayName || "",
+            status: user.status,
+            pipStatus: user.pipStatus || "pending",
+            notesStatus: user.notesStatus || "pending",
+            registeredAt: user.registeredAt
+          })).sort((a, b) => String(a.displayName || "").toLowerCase().localeCompare(String(b.displayName || "").toLowerCase())) };
+        }
         if (sql.includes("FROM pal_invitations")) {
           const [sender, senderMatch, emailDigest] = args;
           return { results: [...db.palInvites.values()].filter(item => item.status === "pending" && (item.inviterUid === senderMatch || item.emailDigest === emailDigest)).map(item => ({ id: item.id, inviterUid: item.inviterUid, inviterName: item.inviterName, status: item.status, createdAt: item.createdAt, direction: item.inviterUid === sender ? "sent" : "received" })) };

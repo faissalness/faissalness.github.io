@@ -90,7 +90,7 @@ try {
   await environment.withSecurityRulesDisabled(async context => {
     await deleteDoc(doc(context.firestore(), 'activeNotesSessions', 'hDbzbNTC7pOuU2UFCjFksopbgaG3'));
   });
-  await check('Owner without an issued session cannot read private Notes', getDoc(doc(environment.authenticatedContext('hDbzbNTC7pOuU2UFCjFksopbgaG3').firestore(), 'privateNotes', 'missing')), assertFails);
+  await check('Owner without an issued session can read private Notes (owner bypass)', getDoc(doc(environment.authenticatedContext('hDbzbNTC7pOuU2UFCjFksopbgaG3').firestore(), 'privateNotes', 'missing')), assertSucceeds);
   await check('Owner cannot forge a trusted session from browser', setDoc(doc(owner, 'activeNotesSessions', 'hDbzbNTC7pOuU2UFCjFksopbgaG3'), {
     uid: 'hDbzbNTC7pOuU2UFCjFksopbgaG3', revoked: false, expiresAt: Timestamp.fromMillis(Date.now() + 60_000)
   }), assertFails);

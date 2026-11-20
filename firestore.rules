@@ -59,10 +59,16 @@ service cloud.firestore {
     }
 
     function applicationPermissionActive(userUid, appName) {
-      return owner() || (exists(/databases/$(database)/documents/applicationPermissions/$(userUid))
-        ? appName in get(/databases/$(database)/documents/applicationPermissions/$(userUid)).data
-          && get(/databases/$(database)/documents/applicationPermissions/$(userUid)).data[appName] == 'active'
-        : automaticApprovalEmail(userUid));
+      // Owner: always active. Ordinary users: the trusted owner-managed
+      // application permission record must exist and grant this application
+      // access; the legacy automatic-approval email remains the original
+      // fallback for accounts without a permission mirror.
+      return owner()
+        || (verifiedAccount() && request.auth.uid == userUid
+          && (exists(/databases/$(database)/documents/applicationPermissions/$(userUid))
+            ? (get(/databases/$(database)/documents/applicationPermissions/$(userUid)).data[appName] == 'active'
+               || get(/databases/$(database)/documents/applicationPermissions/$(userUid)).data[appName] == 'approved')
+            : automaticApprovalEmail(userUid)));
     }
 
     function personalDeletionReady(userUid) {
@@ -146,13 +152,16 @@ service cloud.firestore {
     }
 
     // PRIVATE NOTES
-    // Owner-only private Notes. The owner identity remains the actual database boundary.
+    // Owner-only private Notes. The owner identity remains the actual database boundary;
+    // the owner's main Firebase account password is the master key and bypasses the
+    // trusted-session gate. Ordinary users must hold a valid trusted session.
     match /privateNotes/{noteId} {
-      allow read, create, update, delete: if authorizedNotesUser()
-        && exists(/databases/$(database)/documents/activeNotesSessions/$(request.auth.uid))
-        && get(/databases/$(database)/documents/activeNotesSessions/$(request.auth.uid)).data.uid == request.auth.uid
-        && get(/databases/$(database)/documents/activeNotesSessions/$(request.auth.uid)).data.revoked == false
-        && get(/databases/$(database)/documents/activeNotesSessions/$(request.auth.uid)).data.expiresAt > request.time;
+      allow read, create, update, delete: if owner()
+        || (authorizedNotesUser()
+          && exists(/databases/$(database)/documents/activeNotesSessions/$(request.auth.uid))
+          && get(/databases/$(database)/documents/activeNotesSessions/$(request.auth.uid)).data.uid == request.auth.uid
+          && get(/databases/$(database)/documents/activeNotesSessions/$(request.auth.uid)).data.revoked == false
+          && get(/databases/$(database)/documents/activeNotesSessions/$(request.auth.uid)).data.expiresAt > request.time);
     }
 
     // OLD PIN RECORDS

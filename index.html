@@ -47,6 +47,7 @@
           <p class="card-index">01 / RETURNING</p><h2>Sign in</h2><p class="card-copy">Pick up where you left off.</p>
           <label for="sign-in-email">Email</label><input id="sign-in-email" type="email" autocomplete="username" required>
           <label for="sign-in-password">Password</label><input id="sign-in-password" type="password" autocomplete="current-password" required>
+          <p class="forgot-password-link"><a href="#" id="forgot-password-link" aria-label="Request a password reset link">Forgot password?</a></p>
           <button class="primary-button" type="submit">Sign in <span>↗</span></button>
         </form>
 <aside class="auth-card request-card">
@@ -74,9 +75,19 @@
 
     <aside id="owner-drawer" class="owner-drawer" aria-labelledby="owner-title" hidden>
       <div class="drawer-heading"><p class="eyebrow">FJ / OWNER</p><button id="owner-close" class="icon-button" type="button" aria-label="Close access requests">×</button></div>
-      <h2 id="owner-title">Access requests</h2><p id="drawer-status" class="status drawer-status" role="status" aria-live="polite" hidden></p>
+      <h2 id="owner-title">Owner approval dashboard</h2>
+      <p id="drawer-status" class="status drawer-status" role="status" aria-live="polite" hidden></p>
+      <div class="owner-dash-search">
+        <input id="owner-users-search" type="search" autocomplete="off" aria-label="Search registered accounts by email or name" placeholder="Search registered accounts…">
+        <button id="owner-users-refresh" class="compact-btn primary-button" type="button">Refresh ↻</button>
+      </div>
+      <div class="owner-users-scroll">
+        <table id="owner-users-table" class="owner-users-table" aria-label="Registered PIP and Notes accounts"></table>
+        <div id="owner-users-empty" class="owner-empty" hidden>No registered accounts match the current search.</div>
+      </div>
+      <hr class="owner-dash-divider">
       <form id="admin-account-lookup" class="compact-form">
-        <label for="admin-account-email">Look up verified account</label>
+        <label for="admin-account-email">Look up verified account by email</label>
         <input id="admin-account-email" type="email" autocomplete="email" required>
         <button class="primary-button compact-btn" type="submit">Find account <span>↗</span></button>
       </form>

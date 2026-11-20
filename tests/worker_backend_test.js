@@ -385,6 +385,90 @@ const userToken = makeTestJwt({
     method, headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body)
   }), {}, {});
 
+  // --- Ordinary-user approval workflow and dashboard backend ---
+  const ordinaryDb = new FakeD1();
+  const ordinaryWorker = { fetch: (request, _env, ctx) => implementation.fetch(request, { DB: ordinaryDb, PAL_LOOKUP_SECRET: env.PAL_LOOKUP_SECRET }, ctx) };
+  const ordinaryFlowToken = makeTestJwt(makeClaims({ sub: "ordinary_user", email: "user@example.com", email_verified: true, name: "Ordinary User" }));
+  const registerOrdinary = await ordinaryWorker.fetch(new Request("https://api.local/api/users/register", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${ordinaryFlowToken}`, "Content-Type": "application/json" },
+    body: "{}"
+  }), {}, {});
+  const ordinaryRegistration = await registerOrdinary.json();
+  assert.strictEqual(registerOrdinary.status, 200);
+  assert.strictEqual(ordinaryRegistration.status, "active", "Ordinary accounts start with an active account row");
+  assert.strictEqual(ordinaryRegistration.pipStatus, "pending", "Ordinary users must register as unapproved PIP applications");
+  assert.strictEqual(ordinaryRegistration.notesStatus, "pending", "Ordinary users must register as unapproved Notes applications");
+  assert.strictEqual(ordinaryRegistration.eligible, false);
+
+  const unapprovedProfiles = await ordinaryWorker.fetch(new Request("https://api.local/api/profiles", { headers: { Authorization: `Bearer ${ordinaryFlowToken}` } }), {}, {});
+  assert.strictEqual(unapprovedProfiles.status, 403, "Unapproved ordinary users cannot use PIP backend routes");
+  const unapprovedPermissions = await ordinaryWorker.fetch(new Request("https://api.local/api/admin/permissions", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${ordinaryFlowToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ uid: "ordinary_user", target: "pip", action: "approve" })
+  }), {}, {});
+  assert.strictEqual(unapprovedPermissions.status, 403, "Ordinary users cannot call owner approval endpoints");
+  const forgedOwnerPermissions = await ordinaryWorker.fetch(new Request("https://api.local/api/admin/permissions", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${makeTestJwt(makeClaims({ sub: OWNER_UID }), true)}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ uid: "ordinary_user", target: "pip", action: "approve" })
+  }), {}, {});
+  assert.strictEqual(forgedOwnerPermissions.status, 403, "Forged owner UIDs with invalid signatures must be rejected");
+
+  const approvePip = await ordinaryWorker.fetch(new Request("https://api.local/api/admin/permissions", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${verifiedOwnerToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ uid: "ordinary_user", target: "pip", action: "approve" })
+  }), {}, {});
+  assert.strictEqual(approvePip.status, 200);
+  assert.strictEqual((await approvePip.json()).pipStatus, "active");
+  assert.strictEqual(ordinaryDb.users.get("ordinary_user").pipStatus, "active", "Owner PIP approval activates the account immediately");
+  const approvedProfiles = await ordinaryWorker.fetch(new Request("https://api.local/api/profiles", { headers: { Authorization: `Bearer ${ordinaryFlowToken}` } }), {}, {});
+  assert.strictEqual(approvedProfiles.status, 200, "Approved users pass the PIP backend check without a reload");
+
+  const revokePip = await ordinaryWorker.fetch(new Request("https://api.local/api/admin/permissions", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${verifiedOwnerToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ uid: "ordinary_user", target: "pip", action: "revoke" })
+  }), {}, {});
+  assert.strictEqual(revokePip.status, 200);
+  assert.strictEqual((await revokePip.json()).pipStatus, "revoked");
+  const revokedProfiles = await ordinaryWorker.fetch(new Request("https://api.local/api/profiles", { headers: { Authorization: `Bearer ${ordinaryFlowToken}` } }), {}, {});
+  assert.strictEqual(revokedProfiles.status, 403, "Revoked users lose PIP backend access immediately");
+
+  const approveNotes = await ordinaryWorker.fetch(new Request("https://api.local/api/admin/permissions", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${verifiedOwnerToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ uid: "ordinary_user", target: "notes", action: "approve" })
+  }), {}, {});
+  const approveNotesResult = await approveNotes.json();
+  assert.strictEqual(approveNotes.status, 200);
+  assert.strictEqual(approveNotesResult.notesStatus, "active");
+  assert.strictEqual(ordinaryDb.users.get("ordinary_user").notesStatus, "active", "Owner Notes approval activates the Notes application in D1");
+  assert.strictEqual(ordinaryDb.users.get("ordinary_user").pipStatus, "revoked", "Approving Notes does not grant PIP");
+
+  const revokeBoth = await ordinaryWorker.fetch(new Request("https://api.local/api/admin/permissions", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${verifiedOwnerToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ uid: "ordinary_user", target: "both", action: "revoke" })
+  }), {}, {});
+  const revokeBothResult = await revokeBoth.json();
+  assert.strictEqual(revokeBoth.status, 200);
+  assert.strictEqual(revokeBothResult.pipStatus, "revoked");
+  assert.strictEqual(revokeBothResult.notesStatus, "revoked");
+  assert.strictEqual(ordinaryDb.users.get("ordinary_user").notesStatus, "revoked");
+
+  const dashboardAsOwner = await ordinaryWorker.fetch(new Request("https://api.local/api/admin/users", { headers: { Authorization: `Bearer ${verifiedOwnerToken}` } }), {}, {});
+  assert.strictEqual(dashboardAsOwner.status, 200);
+  const dashboardUsers = await dashboardAsOwner.json();
+  assert.ok(Array.isArray(dashboardUsers.users) && dashboardUsers.users.some(user => user.uid === "ordinary_user" && user.pipStatus === "revoked"),
+    "The owner approval dashboard lists registered accounts with live application states");
+  const dashboardAsUser = await ordinaryWorker.fetch(new Request("https://api.local/api/admin/users", { headers: { Authorization: `Bearer ${ordinaryFlowToken}` } }), {}, {});
+  assert.strictEqual(dashboardAsUser.status, 403, "Ordinary users cannot access the owner dashboard backend");
+  const dashboardNoAuth = await ordinaryWorker.fetch(new Request("https://api.local/api/admin/users"), {}, {});
+  assert.strictEqual(dashboardNoAuth.status, 401, "The dashboard backend requires an authenticated owner");
+
   assert.strictEqual((await authed(ownerAppToken, "/api/users/register", "POST", {})).status, 200);
   assert.strictEqual((await authed(palAppToken, "/api/users/register", "POST", {})).status, 200);
   assert.strictEqual((await authed(ownerAppToken, "/api/admin/permissions", "POST", { uid: "regular_user_123", action: "approve" })).status, 200,
@@ -436,6 +520,90 @@ const userToken = makeTestJwt({
   assert.strictEqual(env.DB.messages.size, messagesBeforeBlockedCleanup, "A blocked finalization must preserve messages");
   assert.strictEqual(firebaseAuthDeleteRequests, 0, "A blocked finalization must not delete Firebase Auth first");
   console.log(" PASS: User aggregate, privacy-preserving Pal lookup, invitation acceptance, message isolation and fail-closed deletion verified.");
+
+  // ---- Owner Approval Dashboard: granular permissions + account listing ----
+  console.log("\n5. Testing Owner Approval Dashboard Backend (Granular Permissions)...");
+  const dashboardDb = new FakeD1();
+  dashboardDb.users.set("ordinary_user_777", { uid: "ordinary_user_777", status: "pending", pipStatus: "pending", notesStatus: "pending", deletionAt: null });
+  dashboardDb.users.set("fj_user_888", { uid: "fj_user_888", status: "pending", pipStatus: "pending", notesStatus: "pending", deletionAt: null });
+  const dashboardEnv = { DB: dashboardDb, PAL_LOOKUP_SECRET: env.PAL_LOOKUP_SECRET };
+  const dashboardWorker = { fetch: (request, _env, ctx) => implementation.fetch(request, dashboardEnv, ctx) };
+  const callDashboard = (token, url, method = "GET", body) => dashboardWorker.fetch(new Request(`https://api.local${url}`, {
+    method, headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body)
+  }), {}, {});
+
+  const ownerDashToken = makeTestJwt(makeClaims({ email: "owner@example.com", email_verified: true, name: "Owner" }));
+  const ordinaryToken = makeTestJwt(makeClaims({ sub: "ordinary_user_777", email: "ordinary@example.com", email_verified: true }));
+  const forgedOwnerToken = makeTestJwt(makeClaims({ sub: "forged-owner", email: "fake@example.com", email_verified: true }));
+
+  assert.strictEqual((await callDashboard(ordinaryToken, "/api/admin/permissions", "POST", { uid: "ordinary_user_777", action: "approve" })).status, 403,
+    "Ordinary users cannot call owner-only permission endpoints");
+  assert.strictEqual((await callDashboard(ordinaryToken, "/api/admin/users")).status, 403,
+    "Ordinary users cannot list accounts");
+  assert.strictEqual((await callDashboard(ordinaryToken, "/api/admin/lookup", "POST", { email: "ordinary@example.com" })).status, 403,
+    "Ordinary users cannot look up accounts");
+  assert.strictEqual((await callDashboard(forgedOwnerToken, "/api/admin/permissions", "POST", { uid: "ordinary_user_777", action: "approve" })).status, 403,
+    "Forged owner identity is rejected");
+  assert.strictEqual((await callDashboard(forgedOwnerToken, "/api/admin/users")).status, 403,
+    "Forged owner identity cannot list accounts");
+
+  assert.strictEqual((await callDashboard(ownerDashToken, "/api/admin/permissions", "POST", { uid: "ordinary_user_777", target: "pip", action: "approve" })).status, 200,
+    "Owner approves PIP");
+  let account = dashboardDb.users.get("ordinary_user_777");
+  assert.strictEqual(account.pipStatus, "active", "D1 mirrors the PIP approval");
+  assert.strictEqual(account.notesStatus, "pending", "Approving PIP leaves Notes pending");
+
+  assert.strictEqual((await callDashboard(ownerDashToken, "/api/admin/permissions", "POST", { uid: "ordinary_user_777", target: "pip", action: "revoke" })).status, 200,
+    "Owner revokes PIP");
+  account = dashboardDb.users.get("ordinary_user_777");
+  assert.strictEqual(account.pipStatus, "revoked", "Revoking PIP stops it");
+  assert.strictEqual(account.notesStatus, "pending", "Revoking PIP leaves Notes untouched");
+
+  assert.strictEqual((await callDashboard(ownerDashToken, "/api/admin/permissions", "POST", { uid: "ordinary_user_777", target: "notes", action: "approve" })).status, 200,
+    "Owner approves Notes");
+  account = dashboardDb.users.get("ordinary_user_777");
+  assert.strictEqual(account.pipStatus, "revoked", "Approving Notes leaves PIP revoked");
+  assert.strictEqual(account.notesStatus, "active", "Notes becomes active");
+
+  assert.strictEqual((await callDashboard(ownerDashToken, "/api/admin/permissions", "POST", { uid: "fj_user_888", target: "both", action: "approve" })).status, 200,
+    "Owner approves both for an fj user");
+  account = dashboardDb.users.get("fj_user_888");
+  assert.strictEqual(account.status, "active", "Approving both activates the account");
+  assert.strictEqual(account.pipStatus, "active");
+  assert.strictEqual(account.notesStatus, "active");
+
+  const list = await (await callDashboard(ownerDashToken, "/api/admin/users")).json();
+  assert.ok(list.users.some(u => u.uid === "ordinary_user_777" && u.pipStatus === "revoked" && u.notesStatus === "active"),
+    "Owner lists ordinary users with their mirror statuses");
+  assert.ok(list.users.some(u => u.uid === "fj_user_888"), "Owner lists fj users");
+
+  const ordinaryBefore = { ...dashboardDb.users.get("ordinary_user_777") };
+  await callDashboard(ordinaryToken, "/api/admin/permissions", "POST", { uid: "ordinary_user_777", target: "both", action: "approve" });
+  assert.deepStrictEqual(dashboardDb.users.get("ordinary_user_777"), ordinaryBefore,
+    "Rejected unauthorized requests must not alter D1");
+
+  // Registration restores the intended approval semantics: ordinary users have
+  // an active account while their PIP/Notes applications start pending; owner
+  // and fj-suffix identities are fully active.
+  const registerDb = new FakeD1();
+  const registerEnv = { DB: registerDb, PAL_LOOKUP_SECRET: env.PAL_LOOKUP_SECRET };
+  const registerWorker = { fetch: (request, _env, ctx) => implementation.fetch(request, registerEnv, ctx) };
+  const ordinaryRegToken = makeTestJwt(makeClaims({ sub: "ordinary_reg_user", email: "ordinary@example.com", email_verified: true, name: "Ordinary" }));
+  const ordinaryReg = await registerWorker.fetch(new Request("https://api.local/api/users/register", {
+    method: "POST", headers: { Authorization: `Bearer ${ordinaryRegToken}`, "Content-Type": "application/json" }, body: "{}"
+  }), {}, {});
+  const ordinaryRegResult = await ordinaryReg.json();
+  assert.strictEqual(ordinaryRegResult.status, "active", "Ordinary users have an active account while applications start pending");
+  assert.strictEqual(ordinaryRegResult.pipStatus, "pending", "Ordinary PIP status starts pending");
+  assert.strictEqual(ordinaryRegResult.eligible, false, "Ordinary users are not eligible for automatic approval");
+  assert.strictEqual(registerDb.users.get("ordinary_reg_user").pipStatus, "pending", "Ordinary users are not activated in D1 at registration");
+  const fjRegToken = makeTestJwt(makeClaims({ sub: "fj_reg_user", email: "fjuser@fj.org", email_verified: true, name: "FJ User" }));
+  const fjReg = await registerWorker.fetch(new Request("https://api.local/api/users/register", {
+    method: "POST", headers: { Authorization: `Bearer ${fjRegToken}`, "Content-Type": "application/json" }, body: "{}"
+  }), {}, {});
+  assert.strictEqual((await fjReg.json()).status, "active", "fj-suffix verified identities are active");
+
+  console.log(" PASS: Owner approval dashboard enforces owner access, granular PIP/Notes statuses, and registration semantics.");
 
   console.log("\n=== ALL WORKER BACKEND TESTS PASSED SUCCESSFULLY! ===");
   global.fetch = originalFetch;

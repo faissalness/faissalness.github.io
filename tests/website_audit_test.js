@@ -87,9 +87,27 @@ assert.ok(pipPage.includes('id="pip-returning"') && pipPage.includes('id="pip-re
   && pipScript.includes('signInWithEmailAndPassword(auth, email, passwordInput.value)')
   && pipPage.includes('id="pip-switch-account"'),
   'Returning PIP users must receive a real password-only Firebase sign-in screen with account switching');
-assert.ok(pipScript.includes('pipStatus') && fs.readFileSync(path.join(ROOT, 'backend', 'worker.js'), 'utf8').includes('/api/admin/permissions')
+assert.ok(pipScript.includes('/api/users/register') && fs.readFileSync(path.join(ROOT, 'backend', 'worker.js'), 'utf8').includes('/api/admin/permissions')
+  && fs.readFileSync(path.join(ROOT, 'backend', 'worker.js'), 'utf8').includes('/api/admin/users')
   && fs.readFileSync(path.join(ROOT, 'backend', 'worker.js'), 'utf8').includes('/api/admin/lookup'),
-  'PIP and Your Notes access must be gated by trusted server-side application permissions');
+  'The owner approval dashboard must use the Worker-managed account list and granular permissions endpoints');
+assert.ok(pipScript.includes('status !== "active"') && pipScript.includes('pending owner approval'),
+  'PIP and Notes access for ordinary users must remain blocked while the server-side D1 account status is pending or not active');
+assert.ok(appScript.includes('loadOwnerUsers') && appScript.includes('dashboardAppStatus') && appScript.includes('dashAction'),
+  'The owner approval dashboard must render account status, PIP/Notes status, and granular actions');
+assert.ok(fs.readFileSync(path.join(ROOT, 'firestore.rules'), 'utf8').includes("status == 'active' || status == 'approved'"),
+  'Firestore rules must restore the application permission gate for ordinary users');
+assert.ok(appScript.includes('Your request is waiting for approval. Once approved, you can sign in.')
+  && appScript.includes('await signOut(auth)'),
+  'Ordinary users without account approval must be blocked from the main website');
+assert.ok(appScript.includes('const isApproved = isOwnerSession || (profile.exists() && profile.data().approved === true);'),
+  'The main website gate requires account approval for non-owner users');
+const notesScript = fs.readFileSync(path.join(ROOT, 'notes.js'), 'utf8');
+assert.ok(notesScript.includes('isOwner = true') && notesScript.includes('isNotesUnlocked = true'),
+  'The owner bypasses the Notes gate and enters Notes immediately after authentication');
+assert.ok(appScript.includes('loadOwnerUsers') && appScript.includes('dashAction')
+  && appScript.includes('/api/admin/permissions'),
+  'The owner approval dashboard must let the owner approve and revoke individual applications');
 assert.ok(pipScript.includes('.value.trim().toLowerCase()')
   && pipScript.includes('pip-returning-mode')
   && pipScript.includes('showOwnProfilePhoto')

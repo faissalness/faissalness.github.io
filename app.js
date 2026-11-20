@@ -309,8 +309,148 @@ function loadQrCode() {
   }
 }
 
-function openOwnerDrawer() { if ($("#owner-drawer")) $("#owner-drawer").hidden = false; }
+// ---- Owner Approval Dashboard ----
+// Lists registered/requested PIP and Notes accounts, shows per-app approval
+// status, and lets the owner approve or revoke access individually.
+
+async function ownerAdminFetch(path, options = {}) {
+  const token = auth.currentUser ? await auth.currentUser.getIdToken() : "";
+  if (!token) throw new Error("Sign in as the owner to manage permissions.");
+  const response = await fetch(`https://fj-api.jimyass.workers.dev${path}`, {
+    ...options,
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}`, ...(options.headers || {}) }
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || `The request failed (status ${response.status}).`);
+  return data;
+}
+
+function dashboardAppStatus(row, appKey) {
+  // States: Approved (active), Pending, Revoked, Unavailable.
+  const value = row.permission ? row.permission[appKey] : null;
+  if (value === "approved" || value === "active") return "Approved";
+  if (value === "revoked") return "Revoked";
+  if (value === "unavailable") return "Unavailable";
+  if (row.d1Status === "scheduled") return "Unavailable";
+  return "Pending";
+}
+
+function dashboardRegistration(row) {
+  // States: Approved request, Pending request, Rejected request, Approved, Not requested.
+  if (row.requestStatus === "pending") return "Pending request";
+  if (row.requestStatus === "approved") return "Approved request";
+  if (row.requestStatus === "rejected") return "Rejected request";
+  if (row.d1Status === "scheduled") return "Suspended";
+  return row.accountApproved ? "Approved" : "Not requested";
+}
+
+function dashCell(text) {
+  const cell = document.createElement("td");
+  cell.textContent = text;
+  return cell;
+}
+
+function dashAction(user, kind, target) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "compact-btn";
+  button.textContent = `${kind === "approve" ? "Approve" : "Revoke"} ${target === "both" ? "Both" : target.toUpperCase()}`;
+  button.addEventListener("click", async () => {
+    button.disabled = true;
+    await setApplicationPermission(user.uid, target, kind);
+    button.disabled = false;
+    await loadOwnerUsers();
+  });
+  return button;
+}
+
+function renderOwnerUsers(users) {
+  const table = $("#owner-users-table");
+  const empty = $("#owner-users-empty");
+  if (!table) return;
+  table.replaceChildren();
+  if (!users.length) {
+    if (empty) empty.hidden = false;
+    return;
+  }
+  if (empty) empty.hidden = true;
+
+  const head = document.createElement("thead");
+  for (const label of ["Account", "Registration", "PIP", "Notes", "Actions"]) {
+    const cell = document.createElement("th");
+    cell.textContent = label;
+    head.append(cell);
+  }
+  table.append(head, document.createElement("tbody"));
+  const tbody = table.querySelector("tbody");
+
+  for (const user of users) {
+    const row = document.createElement("tr");
+    const account = dashCell(user.email || user.displayName || "(no account email)");
+    const uidCell = dashCell(user.uid);
+    uidCell.style.fontSize = "8px";
+    const registration = dashCell(dashboardRegistration(user));
+    const pip = dashCell(dashboardAppStatus(user, "pipStatus"));
+    const notes = dashCell(dashboardAppStatus(user, "notesStatus"));
+    const actions = document.createElement("td");
+    actions.className = "owner-dash-actions";
+    actions.append(
+      dashAction(user, "approve", "pip"),
+      dashAction(user, "approve", "notes"),
+      dashAction(user, "approve", "both"),
+      dashAction(user, "revoke", "pip"),
+      dashAction(user, "revoke", "notes"),
+      dashAction(user, "revoke", "both")
+    );
+    row.append(account, uidCell, registration, pip, notes, actions);
+    tbody.append(row);
+  }
+}
+
+async function loadOwnerUsers() {
+  const search = $("#owner-users-search");
+  const query = (search?.value || "").trim().toLowerCase();
+  let users = [];
+  try {
+    const result = await ownerAdminFetch("/api/admin/users", { method: "GET" });
+    users = result.users || [];
+  } catch (error) {
+    showDrawerStatus(`Could not load registered accounts. ${error.message}`, "error");
+    return [];
+  }
+  await Promise.all(users.map(async user => {
+    const [profileDoc, requestDoc, permissionDoc] = await Promise.all([
+      getDoc(doc(db, "users", user.uid)).catch(() => null),
+      getDoc(doc(db, "accessRequests", user.uid)).catch(() => null),
+      getDoc(doc(db, "applicationPermissions", user.uid)).catch(() => null)
+    ]);
+    user.email = "";
+    user.accountApproved = false;
+    user.requestStatus = null;
+    user.permission = null;
+    if (profileDoc?.exists()) {
+      const data = profileDoc.data();
+      user.email = data.email || "";
+      user.accountApproved = data.approved === true;
+    }
+    if (requestDoc?.exists()) user.requestStatus = requestDoc.data().status;
+    if (permissionDoc?.exists()) user.permission = permissionDoc.data();
+  }));
+  users = users.filter(user =>
+    !query || `${user.email || user.displayName || user.uid}`.toLowerCase().includes(query)
+      || user.uid.toLowerCase().includes(query));
+  users.sort((a, b) => String(a.displayName || a.email || a.uid).toLowerCase().localeCompare(String(b.displayName || b.email || b.uid).toLowerCase()));
+  renderOwnerUsers(users);
+  return users;
+}
+
+function openOwnerDrawer() {
+  if ($("#owner-drawer")) $("#owner-drawer").hidden = false;
+  loadOwnerUsers().catch(error => showDrawerStatus(`Could not load the dashboard. ${error.message}`, "error"));
+}
 function closeOwnerDrawer() { if ($("#owner-drawer")) $("#owner-drawer").hidden = true; }
+if ($("#owner-users-search")) $("#owner-users-search").addEventListener("input", () => loadOwnerUsers().catch(() => {}));
+if ($("#owner-users-refresh")) $("#owner-users-refresh").addEventListener("click", () => loadOwnerUsers().catch(() => {}));
 if ($("#owner-open")) $("#owner-open").addEventListener("click", openOwnerDrawer);
 if ($("#owner-close")) $("#owner-close").addEventListener("click", closeOwnerDrawer);
 if ($("#admin-account-lookup")) {
@@ -335,12 +475,12 @@ if ($("#admin-account-lookup")) {
       name.textContent = `${data.displayName || "PIP account"} — ${email}`;
       const approve = document.createElement("button");
       approve.type = "button";
-      approve.textContent = "Approve";
+      approve.textContent = "Approve both";
       const revoke = document.createElement("button");
       revoke.type = "button";
-      revoke.textContent = "Revoke";
-      approve.addEventListener("click", () => setApplicationPermission(data.uid, "approve"));
-      revoke.addEventListener("click", () => setApplicationPermission(data.uid, "revoke"));
+      revoke.textContent = "Revoke both";
+      approve.addEventListener("click", () => setApplicationPermission(data.uid, "both", "approve"));
+      revoke.addEventListener("click", () => setApplicationPermission(data.uid, "both", "revoke"));
       result.append(name, approve, revoke);
     } catch (error) {
       showDrawerStatus(error.message, "error");
@@ -350,22 +490,34 @@ if ($("#admin-account-lookup")) {
   });
 }
 
-async function setApplicationPermission(uid, action) {
+async function setApplicationPermission(uid, target, action) {
+  // target: "pip" | "notes" | "both"; action: "approve" | "revoke"
+  // Updates the Worker's durable D1 mirror (account status, application
+  // status) and the Firestore applicationPermissions record that Firestore
+  // rules enforce. Both stores agree on the resulting permission state.
+  const label = target === "pip" ? "PIP" : target === "notes" ? "Notes" : "PIP and Notes";
   try {
     const token = await auth.currentUser.getIdToken();
     const response = await fetch("https://fj-api.jimyass.workers.dev/api/admin/permissions", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ uid, action })
+      body: JSON.stringify({ uid, target, action })
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || "Permission update failed");
-    await setDoc(doc(db, "applicationPermissions", uid), {
-      pipStatus: action === "approve" ? "active" : "revoked",
-      notesStatus: action === "approve" ? "active" : "revoked",
-      updatedAt: serverTimestamp()
-    });
-    showDrawerStatus(`Account ${action === "approve" ? "approved" : "revoked"} successfully.`, "success");
+    const updates = { updatedAt: serverTimestamp() };
+    if (target === "pip" || target === "both") updates.pipStatus = action === "approve" ? "active" : "revoked";
+    if (target === "notes" || target === "both") updates.notesStatus = action === "approve" ? "active" : "revoked";
+    await setDoc(doc(db, "applicationPermissions", uid), updates, { merge: true });
+    if (action === "approve") {
+      // The main website opens for approved ordinary users.
+      const userRef = doc(db, "users", uid);
+      const userSnap = await getDoc(userRef);
+      if (userSnap.exists() && userSnap.data().approved !== true) {
+        await updateDoc(userRef, { approved: true });
+      }
+    }
+    showDrawerStatus(`${label} access ${action === "approve" ? "approved" : "revoked"} for ${data.accountStatus ? `the account (${data.accountStatus})` : "the account"}.`, "success");
   } catch (error) {
     showDrawerStatus(error.message, "error");
   }
@@ -464,6 +616,16 @@ if (!configured) {
     finally { setBusy(button, false); }
   });
 
+  $("#forgot-password-link").addEventListener("click", event => {
+    event.preventDefault();
+    const resetEmail = $("#reset-email");
+    const resetForm = $("#reset-form");
+    if (resetEmail && resetForm) {
+      resetEmail.focus();
+      resetForm.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  });
+
   onAuthStateChanged(auth, async user => {
     if (requestInProgress) return;
     if (!user) {
@@ -482,21 +644,27 @@ if (!configured) {
       await signOut(auth);
       return;
     }
+    const isOwnerSession = user.uid === ownerUid;
     if (!hasHumanCheckPassed()) {
-      $("#private-home").hidden = true;
-      $("#site-nav").hidden = true;
-      $("#auth-shell").hidden = true;
-      $("#human-gate").hidden = false;
-      document.body.classList.remove("auth-pending");
-      return;
+      if (isOwnerSession) saveHumanCheck();
+      else {
+        $("#private-home").hidden = true;
+        $("#site-nav").hidden = true;
+        $("#auth-shell").hidden = true;
+        $("#human-gate").hidden = false;
+        document.body.classList.remove("auth-pending");
+        return;
+      }
     }
     $("#human-gate").hidden = true;
     $("#auth-shell").hidden = true;
     showStatus("Verifying your access...", "info");
     try {
       const profile = await getDoc(doc(db, "users", user.uid));
-      // Owner is always approved
-      const isApproved = (user.uid === ownerUid) || (profile.exists() && profile.data().approved === true);
+      // The owner is always approved and bypasses every approval gate.
+      // Ordinary users need their account approved before the main website opens;
+      // the dashboard grants that approval through the owner.
+      const isApproved = isOwnerSession || (profile.exists() && profile.data().approved === true);
       if (!isApproved) {
         showStatus("Your request is waiting for approval. Once approved, you can sign in.", "info");
         await signOut(auth);

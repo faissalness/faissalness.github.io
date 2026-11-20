@@ -257,8 +257,6 @@ function denyCurrentSession() {
 }
 
 async function verifyNotesCredentials(enteredPassword) {
-  if (!enteredPassword || typeof enteredPassword !== "string") return { status: "invalid-password" };
-
   const user = auth.currentUser;
   if (!user) return { status: "authentication-required" };
 
@@ -268,49 +266,13 @@ async function verifyNotesCredentials(enteredPassword) {
   // applications must never inherit access to the owner's private records.
   if (!userIsOwner) return { status: "not-owner" };
 
-  try {
-    const sessionSnap = await getDoc(doc(db, "activeNotesSessions", user.uid));
-    const session = sessionSnap.data();
-    const expiresAt = typeof session?.expiresAt?.toMillis === "function"
-      ? session.expiresAt.toMillis()
-      : Number.NaN;
-    if (!sessionSnap.exists()
-      || session.uid !== user.uid
-      || session.revoked !== false
-      || !Number.isFinite(expiresAt)
-      || expiresAt <= Date.now()) {
-      return { status: "trusted-session-unavailable" };
-    }
-
-    const configSnap = await getDoc(doc(db, "notesConfig", "sharedPassword"));
-    if (configSnap.exists()) {
-      const configData = configSnap.data();
-      const saltBytes = hexToBuffer(configData.saltHex);
-      const computedHash = await computePbkdf2Hash(enteredPassword, saltBytes);
-      if (computedHash !== configData.hashHex) {
-        return { status: "invalid-password" };
-      }
-    } else {
-      const saltBytes = crypto.getRandomValues(new Uint8Array(16));
-      const hashHex = await computePbkdf2Hash(enteredPassword, saltBytes);
-      await setDoc(doc(db, "notesConfig", "sharedPassword"), {
-        saltHex: bufferToHex(saltBytes),
-        hashHex,
-        version: 1,
-        updatedAt: serverTimestamp(),
-        updatedBy: user.uid
-      });
-    }
-
-    currentUser = user;
-    isOwner = userIsOwner;
-    isNotesUnlocked = true;
-    sessionExpiresAt = Date.now() + (12 * 3600 * 1000);
-    return { status: "verified" };
-  } catch (err) {
-    console.error("Notes access verification failed:", err);
-    return { status: "service-error" };
-  }
+  // Owner: the main Firebase account password is the master key. The owner
+  // bypasses the shared Notes password and the trusted-session gate.
+  currentUser = user;
+  isOwner = true;
+  isNotesUnlocked = true;
+  sessionExpiresAt = Date.now() + (12 * 3600 * 1000);
+  return { status: "verified" };
 }
 
 function unlockNotesApp() {
@@ -391,6 +353,16 @@ onAuthStateChanged(auth, async user => {
   // Update user reference
   currentUser = user;
   isOwner = (user.uid === ownerUid);
+
+  // Owner: the main Firebase account credentials are the master key. The owner
+  // bypasses the trusted-session and secondary Notes gates and enters Notes
+  // immediately after sign-in; the neon password gates are for ordinary users.
+  if (isOwner) {
+    isNotesUnlocked = true;
+    sessionExpiresAt = Date.now() + (12 * 3600 * 1000);
+    unlockNotesApp();
+    return;
+  }
 
   // If session has expired or notes is not yet unlocked with shared password,
   // ensure the gate remains strictly locked!

@@ -368,13 +368,13 @@ export default {
       return verifyFirebaseIdToken(header.replace(/^Bearer\s+/i, ""));
     };
     const accountIsActive = async uid => {
-      const account = await env.DB.prepare("SELECT status FROM registered_users WHERE uid = ?").bind(uid).first();
-      return account?.status === "active";
+      const account = await env.DB.prepare("SELECT status, pip_status AS pipStatus FROM registered_users WHERE uid = ?").bind(uid).first();
+      return account?.status === "active" && account?.pipStatus === "active";
     };
 
     if (url.pathname === "/api/users/count" && request.method === "GET") {
       try {
-        const result = await env.DB.prepare("SELECT COUNT(*) AS count FROM registered_users WHERE status = 'active'").first();
+        const result = await env.DB.prepare("SELECT COUNT(*) AS count FROM registered_users WHERE status = 'active' AND pip_status = 'active'").first();
         return new Response(JSON.stringify({ count: Number(result?.count || 0) }), {
           status: 200,
           headers: { ...corsHeaders, "Content-Type": "application/json" }
@@ -397,12 +397,15 @@ export default {
         const email = String(identity.email || "").trim().toLowerCase();
         const isOwner = identity.sub === OWNER_UID;
         const automaticallyApproved = hasAutomaticApprovalEmail(identity);
-        const status = isOwner || automaticallyApproved ? "active" : "pending";
+        // The D1 account column only accepts 'active' or 'scheduled'. Ordinary users
+        // are created as unapproved PIP/Notes applications: the account is active but
+        // the application states stay 'pending' until the owner approves them.
+        const accountStatus = "active";
         const applicationStatus = isOwner || automaticallyApproved ? "active" : "pending";
         await env.DB.prepare(`INSERT OR IGNORE INTO registered_users
           (uid, registered_at, display_name, email_digest, status, pip_status, notes_status)
           VALUES (?, ?, ?, ?, ?, ?, ?)`)
-          .bind(identity.sub, Date.now(), String(identity.name || "").slice(0, 80), emailDigest, status, applicationStatus, applicationStatus).run();
+          .bind(identity.sub, Date.now(), String(identity.name || "").slice(0, 80), emailDigest, accountStatus, applicationStatus, applicationStatus).run();
         await env.DB.prepare("UPDATE registered_users SET display_name = ?, email_digest = ? WHERE uid = ?")
           .bind(String(identity.name || "").slice(0, 80), emailDigest, identity.sub).run();
         if (isOwner) {
@@ -411,17 +414,17 @@ export default {
         } else if (automaticallyApproved) {
           await env.DB.prepare(`UPDATE registered_users
             SET status = 'active', pip_status = 'active', notes_status = 'active'
-            WHERE uid = ? AND status = 'pending' AND pip_status = 'pending' AND notes_status = 'pending'`)
+            WHERE uid = ? AND pip_status != 'revoked' AND notes_status != 'revoked'`)
             .bind(identity.sub).run();
         }
         const existing = await env.DB.prepare("SELECT status, pip_status AS pipStatus, notes_status AS notesStatus FROM registered_users WHERE uid = ?").bind(identity.sub).first();
-        const pipStatus = existing?.pipStatus || (existing?.status === "active" ? "active" : "pending");
-        const notesStatus = existing?.notesStatus || (existing?.status === "active" ? "active" : "pending");
+        const pipStatus = existing?.pipStatus || applicationStatus;
+        const notesStatus = existing?.notesStatus || applicationStatus;
         await env.DB.prepare("UPDATE registered_users SET pip_status = ?, notes_status = ? WHERE uid = ?")
           .bind(pipStatus, notesStatus, identity.sub).run();
         const account = await env.DB.prepare("SELECT status, deletion_at AS deletionAt FROM registered_users WHERE uid = ?").bind(identity.sub).first();
         const permissions = await env.DB.prepare("SELECT pip_status AS pipStatus, notes_status AS notesStatus FROM registered_users WHERE uid = ?").bind(identity.sub).first();
-        return new Response(JSON.stringify({ success: true, status: account?.status || status, eligible: isOwner || automaticallyApproved, pipStatus: permissions?.pipStatus || "pending", notesStatus: permissions?.notesStatus || "pending" }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        return new Response(JSON.stringify({ success: true, status: account?.status || accountStatus, eligible: isOwner || automaticallyApproved, pipStatus: permissions?.pipStatus || pipStatus, notesStatus: permissions?.notesStatus || notesStatus }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       } catch (_) {
         return new Response(JSON.stringify({ error: "Registration could not be recorded" }), { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
@@ -436,17 +439,42 @@ export default {
         const body = await request.json();
         const uid = typeof body.uid === "string" ? body.uid.slice(0, 128) : "";
         const action = body.action;
+        const target = body.target === "pip" || body.target === "notes" ? [body.target] : ["pip", "notes"];
         if (!uid || !["approve", "revoke"].includes(action)) {
           return new Response(JSON.stringify({ error: "Invalid permission action" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         }
-        if (action === "approve") {
-          await env.DB.prepare("UPDATE registered_users SET status = 'active', pip_status = 'active', notes_status = 'active', deletion_at = NULL WHERE uid = ?").bind(uid).run();
-        } else {
-          await env.DB.prepare("UPDATE registered_users SET status = 'scheduled', pip_status = 'revoked', notes_status = 'revoked', deletion_at = NULL WHERE uid = ?").bind(uid).run();
+        // Create the account row when it has no D1 record yet so approval state can
+        // be set for newly registered accounts and accounts whose PIP record is missing.
+        await env.DB.prepare(`INSERT OR IGNORE INTO registered_users
+          (uid, registered_at, status, pip_status, notes_status, deletion_at)
+          VALUES (?, ?, 'active', 'pending', 'pending', NULL)`).bind(uid, Date.now()).run();
+        for (const app of target) {
+          const statusColumn = app === "pip" ? "pip_status" : "notes_status";
+          if (action === "approve") {
+            await env.DB.prepare("UPDATE registered_users SET status = 'active' WHERE uid = ?").bind(uid).run();
+            await env.DB.prepare(`UPDATE registered_users SET ${statusColumn} = 'active' WHERE uid = ?`).bind(uid).run();
+          } else {
+            await env.DB.prepare(`UPDATE registered_users SET ${statusColumn} = 'revoked' WHERE uid = ?`).bind(uid).run();
+          }
         }
-        return new Response(JSON.stringify({ success: true, uid, status: action === "approve" ? "active" : "revoked" }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        const updated = await env.DB.prepare("SELECT status, pip_status AS pipStatus, notes_status AS notesStatus FROM registered_users WHERE uid = ?").bind(uid).first();
+        return new Response(JSON.stringify({ success: true, uid, target, action, status: action === "approve" ? "active" : "revoked", accountStatus: updated?.status || null, pipStatus: updated?.pipStatus || null, notesStatus: updated?.notesStatus || null }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       } catch (_) {
         return new Response(JSON.stringify({ error: "Permission update unavailable" }), { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+    }
+
+    // Owner approval dashboard backend: list registered accounts for the owner.
+    if (url.pathname === "/api/admin/users" && request.method === "GET") {
+      try {
+        const identity = await readIdentity();
+        if (!identity || identity.sub !== OWNER_UID || identity.email_verified !== true) {
+          return new Response(JSON.stringify({ error: "Administrator access denied" }), { status: identity ? 403 : 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+        const result = await env.DB.prepare(`SELECT uid, display_name AS displayName, status, pip_status AS pipStatus, notes_status AS notesStatus, registered_at AS registeredAt
+          FROM registered_users ORDER BY display_name COLLATE NOCASE, uid LIMIT 500`).all();
+        return new Response(JSON.stringify({ users: result.results || [] }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });      } catch (_) {
+        return new Response(JSON.stringify({ error: "User lookup unavailable" }), { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
     }
 

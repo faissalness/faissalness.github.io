@@ -25,6 +25,7 @@ const ADMIN_UID_ACTIVE = "admin_active_uid_001";
 const ADMIN_UID_REVOKED = "admin_revoked_uid_002";
 const USER_UID = "user_regular_uid_100";
 const OTHER_USER_UID = "user_other_uid_200";
+const UNAPPROVED_UID = "user_unapproved_uid_300";
 
 // Mock Database State for Emulator Rules Testing
 const mockDb = {
@@ -40,10 +41,15 @@ const mockDb = {
   },
   users: {
     [USER_UID]: { email: "user@example.com", approved: false, createdAt: Date.now() },
-    [OTHER_USER_UID]: { email: "other@example.com", approved: true, createdAt: Date.now() }
+    [OTHER_USER_UID]: { email: "other@example.com", approved: true, createdAt: Date.now() },
+    [UNAPPROVED_UID]: { email: "unapproved@example.com", approved: false, createdAt: Date.now() }
   },
   accessRequests: {
     "req_user": { uid: USER_UID, email: "user@example.com", status: "pending", createdAt: Date.now() }
+  },
+  applicationPermissions: {
+    [USER_UID]: { pipStatus: "active", notesStatus: "active", updatedAt: Date.now() },
+    [OTHER_USER_UID]: { pipStatus: "revoked", notesStatus: "revoked", updatedAt: Date.now() }
   },
   privateNotes: {
     "note_1": { title: "Secrets", authorUid: OWNER_UID }
@@ -76,6 +82,20 @@ class RulesSimulator {
     const authorizedNotesUser = () => owner;
     const verifiedAccount = () => signedIn && auth.emailVerified === true;
 
+    const automaticApprovalEmail = (userUid) => {
+      if (!verifiedAccount() || auth.uid !== userUid || typeof auth.email !== "string") return false;
+      return /^[^@]+[fF][jJ]@[^@]+$/.test(auth.email.trim().toLowerCase());
+    };
+
+    const applicationPermissionActive = (userUid, appKey) => {
+      if (owner) return true;
+      if (!verifiedAccount() || auth.uid !== userUid) return false;
+      const permission = this.db.applicationPermissions[userUid];
+      if (!permission) return automaticApprovalEmail(userUid);
+      const status = permission[appKey];
+      return status === "active" || status === "approved";
+    };
+
     const hasValidNotesSession = () => {
       if (!authorizedNotesUser()) return false;
       const session = this.db.activeNotesSessions[auth.uid];
@@ -94,10 +114,10 @@ class RulesSimulator {
       return false;
     }
 
-    // 2. Private Notes collection
+    // 2. Private Notes collection (owner bypasses the session gate)
     if (collection === 'privateNotes') {
       if (['read', 'create', 'update', 'delete'].includes(operation)) {
-        return hasValidNotesSession();
+        return owner || hasValidNotesSession();
       }
       return false;
     }
@@ -175,15 +195,24 @@ class RulesSimulator {
       return false;
     }
 
+    // Application permission records: the account itself may read its own
+    // record; only the trusted owner may write any permission record.
+    if (collection === 'applicationPermissions') {
+      if (operation === 'read') return owner || (signedIn && auth.uid === docId);
+      if (['create', 'update', 'delete'].includes(operation)) return owner;
+      return false;
+    }
+
     // 9. Per-user private notes; the UID is taken from the path and auth context.
     if (collection === 'yourNotes' && parts.length === 4 && parts[2] === 'notes') {
       const ownsPath = verifiedAccount() && auth.uid === parts[1];
       if (!ownsPath) return false;
+      const permissionActive = applicationPermissionActive(parts[1], 'notesStatus');
       const account = this.db.yourNotes[parts[1]];
       const active = !account || account.deletionStatus === 'active';
       const due = account?.deletionStatus === 'ready';
-      if (operation === 'read' || operation === 'delete') return active || due;
-      if (!active) return false;
+      if (operation === 'read' || operation === 'delete') return permissionActive && (active || due);
+      if (!active || !permissionActive) return false;
       if (!data || !Array.isArray(Object.keys(data))) return false;
       const keys = Object.keys(data);
       const allowed = ['title', 'content', 'createdAt', 'updatedAt', 'protection'];
@@ -218,7 +247,7 @@ class RulesSimulator {
 
 const sim = new RulesSimulator(mockDb);
 let passedCount = 0;
-let totalCount = 60;
+let totalCount = 71;
 
 function runTest(num, name, condition) {
   assert.ok(condition, `Test ${num} FAILED: ${name}`);
@@ -399,8 +428,20 @@ runTest(52, "Your Notes user cannot write role fields into note records -> DENIE
 runTest(53, "Unverified email cannot read its own Your Notes records -> DENIED",
   sim.evaluate({ auth: { uid: USER_UID, emailVerified: false }, path: `yourNotes/${USER_UID}/notes/n1`, operation: "read" }) === false);
 
-runTest(54, "Owner without a trusted active Notes session is denied -> DENIED",
-  (() => { delete sim.db.activeNotesSessions[OWNER_UID]; return sim.evaluate({ auth: { uid: OWNER_UID }, path: "privateNotes/note_1", operation: "read" }) === false; })());
+runTest(54, "Owner without a trusted active Notes session can read private Notes -> ALLOWED",
+  (() => { delete sim.db.activeNotesSessions[OWNER_UID]; return sim.evaluate({ auth: { uid: OWNER_UID }, path: "privateNotes/note_1", operation: "read" }) === true; })());
+
+runTest(61, "Unapproved user cannot read their own Your Notes -> DENIED",
+  sim.evaluate({ auth: { uid: UNAPPROVED_UID, emailVerified: true }, path: `yourNotes/${UNAPPROVED_UID}/notes/n1`, operation: "read" }) === false);
+
+runTest(62, "Unapproved user cannot write their own Your Notes -> DENIED",
+  sim.evaluate({ auth: { uid: UNAPPROVED_UID, emailVerified: true }, path: `yourNotes/${UNAPPROVED_UID}/notes/n2`, operation: "create", requestTime: 100, data: { title: "Private", content: "Only me", createdAt: 100, updatedAt: 100 } }) === false);
+
+runTest(63, "Verified fj-suffix account receives automatic application access (no mirror record)",
+  sim.evaluate({ auth: { uid: "fj_suffix_user", emailVerified: true, email: "janefj@example.com" }, path: "yourNotes/fj_suffix_user/notes/suffix-note", operation: "read" }) === true);
+
+runTest(64, "Revoked user cannot read their own Your Notes -> DENIED",
+  sim.evaluate({ auth: { uid: OTHER_USER_UID, emailVerified: true }, path: `yourNotes/${OTHER_USER_UID}/notes/n1`, operation: "read" }) === false);
 
 runTest(55, "Owner browser cannot create or forge a Notes session -> DENIED",
   sim.evaluate({ auth: { uid: OWNER_UID }, path: `activeNotesSessions/${OWNER_UID}`, operation: "create", data: { uid: OWNER_UID, expiresAt: Date.now() + 100000, revoked: false } }) === false);
@@ -420,5 +461,38 @@ runTest(59, "A protected Firestore note cannot include plaintext title or body",
 runTest(60, "Protected notes reject truncated ciphertext before it reaches Firestore",
   (() => { sim.db.yourNotes[USER_UID] = { deletionStatus: "active" }; return sim.evaluate({ auth: { uid: USER_UID, emailVerified: true }, path: `yourNotes/${USER_UID}/notes/short`, operation: "create", requestTime: 100, data: { title: "Protected note", content: "", protection: { version: 1, saltHex: "a".repeat(32), ivHex: "b".repeat(24), ciphertextHex: "c0ffee" }, createdAt: 100, updatedAt: 100 } }) === false; })());
 
+runTest(65, "Owner reads the applicationPermissions record of another account -> ALLOWED",
+  sim.evaluate({ auth: { uid: OWNER_UID }, path: `applicationPermissions/${USER_UID}`, operation: "read" }) === true);
+
+runTest(66, "Owner writes applicationPermissions records -> ALLOWED",
+  sim.evaluate({ auth: { uid: OWNER_UID }, path: "applicationPermissions/new_account", operation: "update", data: { pipStatus: "active", notesStatus: "active" } }) === true);
+
+runTest(67, "Ordinary user reads their own applicationPermissions record -> ALLOWED",
+  sim.evaluate({ auth: { uid: USER_UID, emailVerified: true }, path: `applicationPermissions/${USER_UID}`, operation: "read" }) === true);
+
+runTest(68, "Ordinary user cannot write their own applicationPermissions record -> DENIED",
+  sim.evaluate({ auth: { uid: USER_UID, emailVerified: true }, path: `applicationPermissions/${USER_UID}`, operation: "update", data: { pipStatus: "active" } }) === false);
+
+runTest(69, "Ordinary user cannot read another user's applicationPermissions record -> DENIED",
+  sim.evaluate({ auth: { uid: USER_UID, emailVerified: true }, path: `applicationPermissions/${OTHER_USER_UID}`, operation: "read" }) === false);
+
+runTest(70, "Your Notes read is denied when the Firestore permission mirror is revoked -> DENIED",
+  (() => {
+    const original = sim.db.applicationPermissions[USER_UID].notesStatus;
+    sim.db.applicationPermissions[USER_UID].notesStatus = "revoked";
+    const denied = sim.evaluate({ auth: { uid: USER_UID, emailVerified: true }, path: `yourNotes/${USER_UID}/notes/n1`, operation: "read" }) === false;
+    sim.db.applicationPermissions[USER_UID].notesStatus = original;
+    return denied;
+  })());
+
+runTest(71, "Owner reads their own Your Notes without an applicationPermissions mirror -> ALLOWED",
+  (() => {
+    const original = sim.db.applicationPermissions[OWNER_UID];
+    delete sim.db.applicationPermissions[OWNER_UID];
+    const allowed = sim.evaluate({ auth: { uid: OWNER_UID, emailVerified: true }, path: `yourNotes/${OWNER_UID}/notes/n1`, operation: "read" }) === true;
+    sim.db.applicationPermissions[OWNER_UID] = original;
+    return allowed;
+  })());
+
 console.log(`\n=== FIRESTORE RULES VERIFICATION RESULT: ${passedCount} / ${totalCount} PASSED ===`);
-assert.strictEqual(passedCount, 60, "All 60 Firestore rules simulator cases must pass!");
+assert.strictEqual(passedCount, 71, "All 71 Firestore rules simulator cases must pass!");
