@@ -1,10 +1,10 @@
 # Step Inside
 
-A quiet, private corner of the internet.
+into a quite space
 
 ## About FJ
 
-Step Inside is a small personal space for notes, quiet communication, and a calm digital presence. It is intentionally minimal and keeps its users in control of what they share.
+Step Inside is a small personal space for notes, communication, and a calm digital presence. It is intentionally minimal and keeps its users in control of what they share.
 
 ## Explore
 

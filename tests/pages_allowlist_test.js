@@ -4,7 +4,7 @@ const path = require('path');
 
 const root = path.join(__dirname, '..');
 const workflow = fs.readFileSync(path.join(root, '.github', 'workflows', 'deploy-pages.yml'), 'utf8');
-const allowlistSection = workflow.split('for file in \\\n')[1]?.split('; do')[0];
+const allowlistSection = workflow.split(/for file in \\\r?\n/)[1]?.split('; do')[0];
 assert.ok(allowlistSection, 'Pages workflow must use an explicit public file allowlist');
 const allowlist = allowlistSection.replace(/\\/g, '').trim().split(/\s+/).filter(Boolean);
 const required = [
