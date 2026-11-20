@@ -41,6 +41,11 @@ console.log("\n3. Owner/admin-exclusive access");
 check('Ground Zero redirects unauthenticated visitors to the main website', groundZeroJs.includes('window.location.href = "/"'));
 check('Ground Zero allows the owner by the immutable UID', groundZeroJs.includes('gzUser.uid === ownerUid') && groundZeroJs.includes('admins.has(gzUser.uid)'));
 check('Ground Zero reads the admins collection for authorized admins', groundZeroJs.includes('collection(db, "admins")'));
+check('Ground Zero uses the shared default Firebase app instance for auth state', groundZeroJs.includes('const app = initializeApp(firebaseConfig);'));
+check('Ground Zero has no custom Firebase app instance name', !groundZeroJs.includes('initializeApp(firebaseConfig, "FJGroundZero")'));
+check('Ground Zero uses the official authStateReady settlement signal without polling delays', groundZeroJs.includes('auth.authStateReady()') && !groundZeroJs.includes('setTimeout'));
+check('Ground Zero exposes the deterministic auth state machine', groundZeroJs.includes('"INITIALIZING"') && groundZeroJs.includes('"AUTHORIZED"') && groundZeroJs.includes('"UNAUTHORIZED"') && groundZeroJs.includes('"ERROR"'));
+check('Ground Zero never authorizes a deactivated admin', groundZeroJs.includes('adminRecord.active !== false'));
 check('Main site reveals Ground Zero 00 for the owner and authorized admins', appJs.includes('#gz-nav') && appJs.includes('getDoc(doc(db, "admins", user.uid))'));
 
 console.log("\n4. Two distinct permission systems");

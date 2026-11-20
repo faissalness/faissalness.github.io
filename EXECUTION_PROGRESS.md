@@ -298,3 +298,22 @@ This is the newest status and supersedes earlier statements above where they con
 - **Deployed**: Commit `0c255b5` pushed to `origin/main`. GitHub Pages deployment `44752974686` succeeded. Live `https://faissalness.github.io/` and `https://faissalness.github.io/pip/` return HTTP 200.
 - **Verified**: Deployed `app.js` contains password handling (`request-password`); deployed `index.html` contains password input in request form.
 - **All 220 regression tests pass** (13 suites).
+
+### Ground Zero 00 auth-state fix — 2026-11-21 (Flint agent branch)
+
+- **Root cause identified**: `ground-zero.js` initialized a second Firebase Auth app instance (`FJGroundZero`) instead of the shared default instance. Firebase namespaces auth persistence per app name, so the Ground Zero page read a separate auth state store, never saw the persisted owner session, and settled as signed-out before redirecting to the homepage (the reported title flash + redirect defect).
+- **Fixed in `ground-zero.js`**: use the shared default Firebase app instance; deterministic auth state machine (`INITIALIZING -> AUTHENTICATED -> AUTHORIZED / UNAUTHORIZED / ERROR`) via the official `auth.authStateReady()` settlement signal; no polling delays or fallback timers; technical errors surface as `ERROR` without redirecting; deactivated admins are denied.
+- **Backend contract**: no Cloudflare Worker or Firestore rules change required for this fix; contract documented in `GROUND_ZERO_BACKEND_CONTRACT.md` for Hy4 / DeepSeek.
+- **Tests**: `tests/ground_zero_test.js` extended to 46 checks (shared default app instance, no custom instance name, `authStateReady` settlement, deterministic states, deactivated-admin denial); full master suite: **337 passed, 0 failed**.
+- **Deployed**: not deployed by this agent; integration director handles the production release.
+
+### Ground Zero 00 completion report — 2026-11-21
+
+- **Branch**: `agent/flint-20261121-002415`
+- **Commit**: `dd61b2e21eb3bcd784485f9456bf5759012342de`
+- **Implemented changes**: default Firebase app instance in `ground-zero.js`; deterministic auth state machine via `onAuthStateChanged` + `auth.authStateReady()`; ERROR handling without redirect; deactivated admins denied.
+- **Modified files**: `ground-zero.js`, `tests/ground_zero_test.js`, `tests/run_all_tests.js`, `EXECUTION_PROGRESS.md`, new `GROUND_ZERO_BACKEND_CONTRACT.md`.
+- **Tests actually executed**: full master suite (`node tests/run_all_tests.js`) → **337 passed, 0 failed** (15/15 suites, incl. Ground Zero 00 suite 46/46, Pages allowlist 7/7); `ground-zero.js` module syntax check passed; pre-fix baseline was 325 passed / allowlist suite failing.
+- **Actual results**: full local suite green after fix and allowlist line-ending normalization.
+- **Known limitations**: real browser auth-session verification (Firebase emulator + Playwright) not runnable in this environment; production live verification deferred to integration director.
+- **Exact remaining work**: owner live sign-in verification on production, dashboard load with real accounts, deploy branch via integration director, production release.
