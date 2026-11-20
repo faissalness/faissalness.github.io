@@ -1,4 +1,5 @@
 const { test, expect } = require('@playwright/test');
+const { execFileSync } = require('node:child_process');
 const fs = require('node:fs');
 const http = require('node:http');
 const path = require('node:path');
@@ -18,7 +19,9 @@ test.beforeAll(async () => {
     const pathname = new URL(request.url, 'http://127.0.0.1').pathname;
     const localPath = pathname === '/pip/' || pathname === '/pip'
       ? 'pip.html'
-      : pathname.replace(/^\/pip\//, '/').replace(/^\/+/, '');
+      : pathname === '/notes/' || pathname === '/notes'
+        ? 'notes.html'
+        : pathname.replace(/^\/(?:pip|notes)\//, '/').replace(/^\/+/, '');
     const file = path.resolve(root, localPath);
     if (!file.startsWith(`${root}${path.sep}`) || !fs.existsSync(file) || !fs.statSync(file).isFile()) {
       response.writeHead(404).end();
@@ -37,6 +40,44 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   if (staticServer) await new Promise(resolve => staticServer.close(resolve));
+});
+
+test('QR-tech renders and independently decodes its exact destination at desktop and mobile sizes', async ({ browser }) => {
+  const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const page = await context.newPage();
+  await page.goto(`${origin}/qr.html`);
+  const image = page.locator('#qr-tech-image');
+  await expect(image).toBeVisible();
+  expect(await image.getAttribute('alt')).toBe('QR code linking to https://en.wikipedia.org/wiki/Alain_Tourret');
+  expect(await page.locator('main').evaluate(element => element.children.length)).toBe(1);
+
+  const pythonDecoder = "import os,sys,tempfile; from qr_decoder import decode_qr_image; f=tempfile.NamedTemporaryFile(suffix='.png',delete=False); f.write(sys.stdin.buffer.read()); f.close(); print(decode_qr_image(f.name,version=6,ec_level='M')); os.unlink(f.name)";
+  for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 }, { width: 320, height: 640 }]) {
+    await page.setViewportSize(viewport);
+    const bounds = await image.boundingBox();
+    expect(bounds).not.toBeNull();
+    expect(Math.abs(bounds.width - bounds.height)).toBeLessThan(1);
+    expect(bounds.width).toBeGreaterThan(200);
+    const renderedPng = await image.screenshot();
+    const decoded = execFileSync('python', ['-c', pythonDecoder], { input: renderedPng }).toString().trim();
+    expect(decoded).toBe('https://en.wikipedia.org/wiki/Alain_Tourret');
+  }
+  await context.close();
+});
+
+test('Notes reports missing owner sign-in instead of labeling it a bad password', async ({ browser }) => {
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const page = await context.newPage();
+  await page.goto(`${origin}/notes/`);
+  const password = page.locator('#notes-gate-password');
+  await expect(password).toBeVisible();
+  await password.fill('not-a-notes-password');
+  await password.press('Enter');
+  const feedback = page.locator('#gate-feedback');
+  await expect(feedback).toContainText('Sign in to the owner account');
+  await expect(feedback.locator('a')).toHaveAttribute('href', '/');
+  await expect(page.locator('#notes-app')).toBeHidden();
+  await context.close();
 });
 
 function latestActionLink(email, mode) {

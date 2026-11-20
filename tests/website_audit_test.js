@@ -67,8 +67,9 @@ assert.ok(qrPage.includes('class="qr-tech-page"') && qrPage.includes('qr-tech.js
   && !/<main[^>]*>[\s\S]*<(?:h1|h2|p|footer|button)\b/i.test(qrPage),
   'QR-tech must show only its generated code below the generic navigation');
 assert.ok(fs.readFileSync(path.join(ROOT, 'styles.css'), 'utf8').includes('.qr-tech-body:before{display:none}')
-  && fs.readFileSync(path.join(ROOT, 'qr-tech.js'), 'utf8').includes('generateQrMatrix(destination, 6, "M")'),
-  'QR-tech must render a high-contrast version-6 QR on a flat dark background');
+  && fs.readFileSync(path.join(ROOT, 'qr-tech.js'), 'utf8').includes('generateQrMatrix(destination, 6, "M")')
+  && fs.readFileSync(path.join(ROOT, 'qr-tech.js'), 'utf8').includes('https://en.wikipedia.org/wiki/Alain_Tourret'),
+  'QR-tech must render the intended destination as a standard version-6 QR on a flat dark page');
 assert.ok(fs.readFileSync(path.join(ROOT, '.github', 'workflows', 'deploy-pages.yml'), 'utf8').includes('dist/qr/index.html'),
   'Pages workflow must publish the clean /qr/ route');
 const pipPage = fs.readFileSync(path.join(ROOT, 'pip.html'), 'utf8');

@@ -1,7 +1,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
-import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
-import { 
-  getFirestore, doc, setDoc, getDoc, collection, query, where, orderBy, 
+import { connectAuthEmulator, getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+import {
+  connectFirestoreEmulator, getFirestore, doc, setDoc, getDoc, collection, query, where, orderBy,
   onSnapshot, serverTimestamp, updateDoc, deleteDoc, getDocs 
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 import { firebaseConfig, ownerUid } from "./firebase-config.js";
@@ -9,6 +9,10 @@ import { firebaseConfig, ownerUid } from "./firebase-config.js";
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
+if (location.hostname === "127.0.0.1" || location.hostname === "localhost") {
+  connectAuthEmulator(auth, "http://127.0.0.1:9099", { disableWarnings: true });
+  connectFirestoreEmulator(db, "127.0.0.1", 8080);
+}
 
 // DOM Elements
 const $ = sel => document.querySelector(sel);
@@ -54,6 +58,8 @@ let sessionExpiresAt = 0;
 let failedAttempts = 0;
 let lockoutUntil = 0;
 let isVerifying = false;
+let resolveInitialAuthState;
+const initialAuthState = new Promise(resolve => { resolveInitialAuthState = resolve; });
 
 let currentNoteId = null;
 let allNotes = [];
@@ -119,6 +125,8 @@ function discreetGateError() {
     gatePasswordInput.value = "";
   }
   if (gateFeedback) {
+    gateFeedback.classList.remove("gate-feedback-message");
+    gateFeedback.replaceChildren();
     gateFeedback.classList.add("active-error");
   }
   setTimeout(() => {
@@ -131,6 +139,27 @@ function discreetGateError() {
     }
   }, 600);
 }
+
+function showGateMessage(message, linkToHome = false) {
+  if (!gateFeedback) return;
+  gateFeedback.classList.remove("active-error");
+  gateFeedback.classList.add("gate-feedback-message");
+  gateFeedback.replaceChildren(document.createTextNode(message));
+  if (linkToHome) {
+    const link = document.createElement("a");
+    link.href = "/";
+    link.textContent = "FJ Home";
+    gateFeedback.append(" ", link);
+  }
+}
+
+function clearGateMessage() {
+  if (!gateFeedback) return;
+  gateFeedback.classList.remove("gate-feedback-message");
+  gateFeedback.replaceChildren();
+}
+
+gatePasswordInput?.addEventListener("input", clearGateMessage);
 
 // IndexedDB Storage for Attachments & Offline Notes
 const IDB_NAME = "FJ_NOTES_DB";
@@ -222,58 +251,65 @@ function lockNotesGate() {
   focusGateInput();
 }
 
-async function verifyNotesCredentials(enteredPassword) {
-  if (!enteredPassword || typeof enteredPassword !== "string") return false;
+function denyCurrentSession() {
+  lockNotesGate();
+  showGateMessage("Notes authorization was denied or revoked. Notes remain locked.");
+}
 
-  // 1. Identity Requirement: Must have an active Firebase Auth user
-  if (!auth.currentUser) {
-    return false;
-  }
+async function verifyNotesCredentials(enteredPassword) {
+  if (!enteredPassword || typeof enteredPassword !== "string") return { status: "invalid-password" };
 
   const user = auth.currentUser;
+  if (!user) return { status: "authentication-required" };
+
   const userIsOwner = (user.uid === ownerUid);
 
   // The original Notes store is owner-only. Administrators for personal Notes
   // applications must never inherit access to the owner's private records.
-  if (!userIsOwner) return false;
+  if (!userIsOwner) return { status: "not-owner" };
 
-  // 3. Shared Notes Password Requirement:
-  // Check security record in Firestore /notesConfig/sharedPassword
   try {
+    const sessionSnap = await getDoc(doc(db, "activeNotesSessions", user.uid));
+    const session = sessionSnap.data();
+    const expiresAt = typeof session?.expiresAt?.toMillis === "function"
+      ? session.expiresAt.toMillis()
+      : Number.NaN;
+    if (!sessionSnap.exists()
+      || session.uid !== user.uid
+      || session.revoked !== false
+      || !Number.isFinite(expiresAt)
+      || expiresAt <= Date.now()) {
+      return { status: "trusted-session-unavailable" };
+    }
+
     const configSnap = await getDoc(doc(db, "notesConfig", "sharedPassword"));
     if (configSnap.exists()) {
       const configData = configSnap.data();
       const saltBytes = hexToBuffer(configData.saltHex);
       const computedHash = await computePbkdf2Hash(enteredPassword, saltBytes);
       if (computedHash !== configData.hashHex) {
-        return false;
+        return { status: "invalid-password" };
       }
     } else {
-      // First-time initialization by owner
-      if (userIsOwner) {
-        const saltBytes = crypto.getRandomValues(new Uint8Array(16));
-        const hashHex = await computePbkdf2Hash(enteredPassword, saltBytes);
-        await setDoc(doc(db, "notesConfig", "sharedPassword"), {
-          saltHex: bufferToHex(saltBytes),
-          hashHex,
-          version: 1,
-          updatedAt: serverTimestamp(),
-          updatedBy: user.uid
-        });
-      } else {
-        return false;
-      }
+      const saltBytes = crypto.getRandomValues(new Uint8Array(16));
+      const hashHex = await computePbkdf2Hash(enteredPassword, saltBytes);
+      await setDoc(doc(db, "notesConfig", "sharedPassword"), {
+        saltHex: bufferToHex(saltBytes),
+        hashHex,
+        version: 1,
+        updatedAt: serverTimestamp(),
+        updatedBy: user.uid
+      });
     }
 
-    // 4. Record session timestamp in memory (max 12h)
     currentUser = user;
     isOwner = userIsOwner;
     isNotesUnlocked = true;
     sessionExpiresAt = Date.now() + (12 * 3600 * 1000);
-    return true;
+    return { status: "verified" };
   } catch (err) {
-    console.error("Verification error:", err);
-    return false;
+    console.error("Notes access verification failed:", err);
+    return { status: "service-error" };
   }
 }
 
@@ -305,10 +341,24 @@ if (gateForm) {
     gatePasswordInput.disabled = true;
 
     try {
-      const verified = await verifyNotesCredentials(password);
-      if (verified) {
+      await initialAuthState;
+      const result = await verifyNotesCredentials(password);
+      if (result.status === "verified") {
         failedAttempts = 0;
+        clearGateMessage();
         unlockNotesApp();
+      } else if (result.status === "authentication-required") {
+        gatePasswordInput.value = "";
+        showGateMessage("Sign in to the owner account, then return here.", true);
+      } else if (result.status === "not-owner") {
+        gatePasswordInput.value = "";
+        showGateMessage("This account cannot access this Notes collection.", true);
+      } else if (result.status === "trusted-session-unavailable") {
+        gatePasswordInput.value = "";
+        showGateMessage("A trusted Notes session is missing, expired, or revoked. Notes remain locked.");
+      } else if (result.status === "service-error") {
+        gatePasswordInput.value = "";
+        showGateMessage("Notes access could not be verified. No private notes were opened. Try again later.");
       } else {
         failedAttempts++;
         if (failedAttempts >= 5) {
@@ -327,6 +377,10 @@ if (gateForm) {
 
 // Auth State Changed: Ensures gate is persistent on load or sign-out
 onAuthStateChanged(auth, async user => {
+  if (resolveInitialAuthState) {
+    resolveInitialAuthState();
+    resolveInitialAuthState = null;
+  }
   if (!user) {
     currentUser = null;
     isOwner = false;

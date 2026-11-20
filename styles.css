@@ -69,8 +69,8 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:1px solid var(-
 .qr-tech-body{background:#020203}
 .qr-tech-body:before{display:none}
 .qr-tech-page{min-height:calc(100svh - 88px);display:grid;place-items:center;padding:24px}
-.qr-tech-image{display:block;width:min(72vw,420px);height:auto;aspect-ratio:1;object-fit:contain;image-rendering:pixelated}
-@media(max-width:600px){.pip-auth.pip-returning-mode{min-height:calc(100svh - 70px)}.qr-tech-page{min-height:calc(100svh - 70px);padding:16px}.qr-tech-image{width:min(78vw,330px)}}
+.qr-tech-image{display:block;width:min(100%,512px);height:auto;aspect-ratio:1;object-fit:contain}
+@media(max-width:600px){.pip-auth.pip-returning-mode{min-height:calc(100svh - 70px)}.qr-tech-page{min-height:calc(100svh - 70px);padding:16px}}
 .qr-description{color:#999a9e;font-size:12px;margin:20px 0 28px}
 .qr-artifact{width:min(74vw,390px);aspect-ratio:1;padding:14px;background:#fff;border:1px solid #ffffff2b;box-shadow:0 15px 80px #cbff5912}
 .qr-artifact img{display:block;width:100%;height:100%;object-fit:contain}
@@ -172,6 +172,8 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:1px solid var(-
 @keyframes gate-shake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-6px)}40%,80%{transform:translateX(6px)}}
 .gate-feedback-indicator{height:5px;width:5px;border-radius:50%;margin-top:10px;opacity:0;transition:opacity .3s,background-color .3s}
 .gate-feedback-indicator.active-error{opacity:1;background:#ff5964;box-shadow:0 0 8px #ff5964}
+.gate-feedback-indicator.gate-feedback-message{width:auto;height:auto;max-width:320px;opacity:1;color:#c5c6c8;text-align:center;font:11px/1.6 var(--mono);letter-spacing:0}
+.gate-feedback-message a{color:var(--lime);text-decoration:underline;text-underline-offset:3px}
 .pin-modal{position:fixed;inset:0;z-index:20;background:rgba(2,2,3,0.92);backdrop-filter:blur(8px);display:grid;place-items:center;padding:20px}
 .pin-card{width:min(420px,100%);padding:clamp(24px,4vw,40px);border:1px solid #232427;background:linear-gradient(145deg,#0a0b0d,#040506);box-shadow:0 24px 80px rgba(0,0,0,0.8);position:relative}
 .pin-card:before{content:"";position:absolute;width:16px;height:16px;left:-1px;top:-1px;border-top:1px solid var(--lime);border-left:1px solid var(--lime)}

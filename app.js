@@ -440,7 +440,7 @@ if (!configured) {
     const button = event.currentTarget.querySelector('button[type="submit"]');
     setBusy(button, true, "Opening…");
     showStatus("Checking your sign-in…", "info");
-    try { await signInWithEmailAndPassword(auth, $("#sign-in-email").value.trim(), $("#sign-in-password").value); }
+    try { await signInWithEmailAndPassword(auth, $("#sign-in-email").value.trim().toLowerCase(), $("#sign-in-password").value); }
     catch (error) { showStatus(`Sign-in failed. ${errorMessage(error)}`, "error"); }
     finally { setBusy(button, false); }
   });
@@ -448,7 +448,7 @@ if (!configured) {
   $("#reset-form").addEventListener("submit", async event => {
     event.preventDefault();
     const button = event.currentTarget.querySelector('button[type="submit"]');
-    const email = $("#reset-email").value.trim();
+    const email = $("#reset-email").value.trim().toLowerCase();
     setBusy(button, true, "Sending…");
     showStatus("Requesting a secure password link…", "info");
     try {
@@ -534,7 +534,7 @@ if (!configured) {
                 reviewedBy: user.uid
               });
               try {
-                await sendPasswordResetEmail(auth, data.email, { url: "https://faissalness.github.io/", handleCodeInApp: false });
+                await sendPasswordResetEmail(auth, data.email.trim().toLowerCase(), { url: "https://faissalness.github.io/", handleCodeInApp: false });
                 await updateDoc(item.ref, {
                   deliveryStatus: "sent",
                   deliveryTimestamp: serverTimestamp()
