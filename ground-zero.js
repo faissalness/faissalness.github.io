@@ -323,6 +323,7 @@ async function gzCheckAuthorization(user) {
     return;
   }
   gzStatus = "AUTHORIZED";
+  gzShowAuthorizedUI();
   setStatus("");
   try { await loadAccounts(); } catch (error) { setGzError(`Could not load accounts: ${error.message}`); }
 }
