@@ -9,7 +9,7 @@
   <meta name="description" content="PIP and Your Notes — a private space for your own notes.">
   <title>PIP and Your Notes 04 — FJ</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/styles.css?v=20261119-restore">
+  <link rel="stylesheet" href="/styles.css?v=20261121-pip">
 </head>
 <body class="site-body">
   <header class="topbar">
@@ -24,75 +24,197 @@
     </nav>
   </header>
   <main class="pip-page">
-    <div id="pip-status" class="status" role="status" aria-live="polite" hidden></div>
+    <div id="pip-status" class="status pip-global-status" role="status" aria-live="polite" hidden></div>
+
     <section id="pip-auth" class="pip-auth">
-      <p class="eyebrow">FJ / PRIVATE FREQUENCY / 04</p>
-      <h1>PIP and<br><span>Your Notes.</span></h1>
-      <p class="pip-copy">A private notes space for your account. Users authenticate on the main FJ website — there is no separate PIP login.</p>
-    </section>
-    <section id="pip-notes" class="pip-notes" hidden>
-      <div class="pip-heading"><div><p class="eyebrow">YOUR PRIVATE SPACE</p><h1 id="pip-welcome">Your Notes.</h1></div><button id="pip-sign-out" class="text-button" type="button">Sign out ↗</button></div>
-      <nav class="pip-tabs" aria-label="Your Notes applications">
-        <button type="button" class="pip-tab active" data-pip-view="notes">Notes</button>
-        <button type="button" class="pip-tab" data-pip-view="feed">Feed</button>
-        <button type="button" class="pip-tab" data-pip-view="pals">Post It Pal</button>
-        <button type="button" class="pip-tab" data-pip-view="noty">Noty <span id="pip-noty-count" hidden>0</span></button>
-      </nav>
-      <section id="pip-view-notes" class="pip-view">
-      <div id="pip-notes-layout" class="pip-notes-layout">
-        <aside class="pip-note-list-panel"><div class="pip-list-heading"><h2>Notes</h2><button class="compact-btn primary-button" id="pip-new-note" type="button">New note +</button></div><div id="pip-note-list" class="pip-note-list" aria-live="polite"></div><h2>Trash</h2><div id="pip-trash-list" class="pip-note-list" aria-live="polite"></div></aside>
-        <form id="pip-note-form" class="pip-editor">
-          <div class="pip-editor-heading"><input id="pip-note-title" class="note-title-input" maxlength="160" placeholder="Untitled note" aria-label="Note title"><button id="pip-delete-note" class="compact-btn danger-btn" type="button" hidden>Delete</button></div>
-          <div class="pip-note-security"><label class="pip-protection-toggle"><input id="pip-note-protected" type="checkbox"> Protect this note with a separate password</label><div class="pip-note-password-row"><label class="sr-only" for="pip-note-password">Note protection password</label><input id="pip-note-password" type="password" minlength="8" maxlength="256" autocomplete="off" placeholder="Note password (8+ characters)" hidden><button id="pip-note-unlock" class="text-button" type="button" hidden>Unlock note</button></div><p id="pip-note-lock-status" class="micro-note" role="status" aria-live="polite" hidden></p></div>
-          <textarea id="pip-note-content" class="note-textarea pip-textarea" maxlength="20000" placeholder="Write something…" aria-label="Note content"></textarea>
-          <div class="pip-attachments"><label for="pip-note-attachments">Attachments</label><input id="pip-note-attachments" type="file" multiple><div id="pip-note-attachment-list" aria-live="polite"></div></div>
-          <div class="pip-editor-footer"><span id="pip-save-status" class="save-indicator" role="status" aria-live="polite"></span><button class="primary-button compact-btn" id="pip-save-note" type="submit">Save note <span>↗</span></button></div>
-        </form>
+      <div class="pip-auth-hero">
+        <p class="eyebrow">FJ / PRIVATE FREQUENCY / 04</p>
+        <h1>PIP and<br><span>Your Notes.</span></h1>
+        <p class="pip-copy">A private notes space for your account. Users authenticate on the main FJ website — there is no separate PIP login.</p>
       </div>
-      </section>
-      <section id="pip-view-feed" class="pip-view" hidden>
-        <div class="pip-social-composer">
-          <label for="pip-post-body">Share a Post</label>
-          <textarea id="pip-post-body" maxlength="5000" placeholder="Write a post…" required></textarea>
-          <label for="pip-post-visibility">Visibility</label>
-          <select id="pip-post-visibility"><option value="private">Only me</option><option value="friends">Friends</option></select>
-          <button id="pip-post-submit" class="primary-button compact-btn" type="button">Publish <span>↗</span></button>
+      <div class="pip-auth-panel" aria-hidden="true">
+        <p class="pip-auth-kicker">Secure · Private · Personal</p>
+        <ul class="pip-auth-highlights">
+          <li>Encrypted individual notes</li>
+          <li>Attachments and trash recovery</li>
+          <li>Feed, Post It Pal, and Noty</li>
+        </ul>
+      </div>
+    </section>
+
+    <section id="pip-notes" class="pip-notes" hidden>
+      <header class="pip-heading pip-app-header">
+        <div class="pip-heading-copy">
+          <p class="eyebrow">YOUR PRIVATE SPACE</p>
+          <h1 id="pip-welcome">Your Notes.</h1>
+          <p class="pip-app-subtitle">Notes, sharing, conversations, and notifications — all scoped to your account.</p>
         </div>
-        <div id="pip-post-feed" class="pip-noty-list" aria-live="polite"></div>
-      </section>
-      <section id="pip-view-pals" class="pip-view" hidden>
-        <div class="pip-pal-grid">
-          <aside class="pip-note-list-panel pip-pal-sidebar">
-            <section class="pip-profile-photo-panel" aria-labelledby="pip-profile-photo-title">
-              <h2 id="pip-profile-photo-title">Profile photo</h2>
-              <div id="pip-own-avatar" class="pip-avatar pip-avatar-large" aria-label="Your profile photo"></div>
-              <label for="pip-profile-photo">Choose an image</label>
-              <input id="pip-profile-photo" type="file" accept="image/png,image/jpeg,image/webp">
-              <div class="pip-profile-photo-actions">
-                <button id="pip-save-profile-photo" class="primary-button compact-btn" type="button" disabled>Save photo</button>
-                <button id="pip-remove-profile-photo" class="text-button" type="button">Remove</button>
+        <div class="pip-heading-actions">
+          <button id="pip-sign-out" class="text-button pip-signout" type="button">Sign out ↗</button>
+        </div>
+      </header>
+
+      <nav class="pip-tabs" aria-label="Your Notes applications">
+        <button type="button" class="pip-tab active" data-pip-view="notes"><span class="pip-tab-label">Notes</span></button>
+        <button type="button" class="pip-tab" data-pip-view="feed"><span class="pip-tab-label">Feed</span></button>
+        <button type="button" class="pip-tab" data-pip-view="pals"><span class="pip-tab-label">Post It Pal</span></button>
+        <button type="button" class="pip-tab" data-pip-view="noty"><span class="pip-tab-label">Noty</span> <span id="pip-noty-count" class="pip-tab-badge" hidden>0</span></button>
+      </nav>
+
+      <div class="pip-views">
+        <section id="pip-view-notes" class="pip-view" aria-label="Notes">
+          <div id="pip-notes-layout" class="pip-notes-layout">
+            <aside class="pip-note-list-panel pip-sidebar-panel">
+              <div class="pip-panel-header pip-list-heading">
+                <div>
+                  <p class="pip-panel-kicker">LIBRARY</p>
+                  <h2>Notes</h2>
+                </div>
+                <button class="compact-btn primary-button" id="pip-new-note" type="button">New note +</button>
               </div>
-              <p id="pip-profile-photo-status" class="micro-note" role="status" aria-live="polite"></p>
+              <div id="pip-note-list" class="pip-note-list" aria-live="polite"></div>
+
+              <div class="pip-panel-divider" aria-hidden="true"></div>
+              <div class="pip-panel-header pip-list-heading pip-trash-heading">
+                <div>
+                  <p class="pip-panel-kicker">RECOVERY</p>
+                  <h2>Trash</h2>
+                </div>
+              </div>
+              <div id="pip-trash-list" class="pip-note-list pip-trash-list" aria-live="polite"></div>
+            </aside>
+
+            <form id="pip-note-form" class="pip-editor pip-editor-panel">
+              <div class="pip-editor-heading">
+                <input id="pip-note-title" class="note-title-input" maxlength="160" placeholder="Untitled note" aria-label="Note title">
+                <div class="pip-editor-heading-actions">
+                  <button id="pip-delete-note" class="compact-btn danger-btn" type="button" hidden>Delete</button>
+                </div>
+              </div>
+
+              <div class="pip-note-security">
+                <label class="pip-protection-toggle"><input id="pip-note-protected" type="checkbox"> Protect this note with a separate password</label>
+                <div class="pip-note-password-row">
+                  <label class="sr-only" for="pip-note-password">Note protection password</label>
+                  <input id="pip-note-password" type="password" minlength="8" maxlength="256" autocomplete="off" placeholder="Note password (8+ characters)" hidden>
+                  <button id="pip-note-unlock" class="text-button" type="button" hidden>Unlock note</button>
+                </div>
+                <p id="pip-note-lock-status" class="micro-note" role="status" aria-live="polite" hidden></p>
+              </div>
+
+              <div class="pip-editor-body">
+                <textarea id="pip-note-content" class="note-textarea pip-textarea" maxlength="20000" placeholder="Write something…" aria-label="Note content"></textarea>
+              </div>
+
+              <div class="pip-attachments">
+                <div class="pip-attachments-header">
+                  <label for="pip-note-attachments">Attachments</label>
+                  <span class="pip-field-hint">Images, text, and app files (up to 1 MB each)</span>
+                </div>
+                <input id="pip-note-attachments" type="file" multiple>
+                <div id="pip-note-attachment-list" class="pip-attachment-list" aria-live="polite"></div>
+              </div>
+
+              <div class="pip-editor-footer">
+                <span id="pip-save-status" class="save-indicator" role="status" aria-live="polite"></span>
+                <button class="primary-button compact-btn" id="pip-save-note" type="submit">Save note <span>↗</span></button>
+              </div>
+            </form>
+          </div>
+        </section>
+
+        <section id="pip-view-feed" class="pip-view" hidden aria-label="Feed">
+          <div class="pip-feed-layout">
+            <div class="pip-social-composer pip-card">
+              <div class="pip-card-header">
+                <p class="pip-panel-kicker">SHARE</p>
+                <h2>Share a Post</h2>
+              </div>
+              <label for="pip-post-body">What's on your mind?</label>
+              <textarea id="pip-post-body" maxlength="5000" placeholder="Write a post for yourself or your pals…" required></textarea>
+              <div class="pip-composer-controls">
+                <div class="pip-field-group">
+                  <label for="pip-post-visibility">Visibility</label>
+                  <select id="pip-post-visibility"><option value="private">Only me</option><option value="friends">Friends</option></select>
+                </div>
+                <button id="pip-post-submit" class="primary-button compact-btn" type="button">Publish <span>↗</span></button>
+              </div>
+            </div>
+            <div id="pip-post-feed" class="pip-noty-list pip-feed-list" aria-live="polite"></div>
+          </div>
+        </section>
+
+        <section id="pip-view-pals" class="pip-view" hidden aria-label="Post It Pal">
+          <div class="pip-pal-grid">
+            <aside class="pip-note-list-panel pip-pal-sidebar">
+              <section class="pip-profile-photo-panel pip-card-subsection" aria-labelledby="pip-profile-photo-title">
+                <div class="pip-panel-header">
+                  <div>
+                    <p class="pip-panel-kicker">IDENTITY</p>
+                    <h2 id="pip-profile-photo-title">Profile photo</h2>
+                  </div>
+                </div>
+                <div class="pip-profile-photo-preview">
+                  <div id="pip-own-avatar" class="pip-avatar pip-avatar-large" aria-label="Your profile photo"></div>
+                </div>
+                <label for="pip-profile-photo">Choose an image</label>
+                <input id="pip-profile-photo" type="file" accept="image/png,image/jpeg,image/webp">
+                <div class="pip-profile-photo-actions">
+                  <button id="pip-save-profile-photo" class="primary-button compact-btn" type="button" disabled>Save photo</button>
+                  <button id="pip-remove-profile-photo" class="text-button" type="button">Remove</button>
+                </div>
+                <p id="pip-profile-photo-status" class="micro-note" role="status" aria-live="polite"></p>
+              </section>
+
+              <form id="pip-pal-invite-form" class="pip-pal-invite pip-card-subsection"><label for="pip-pal-email">Invite a Pal by email</label><div class="pip-inline-fields"><input id="pip-pal-email" type="email" autocomplete="email" required><button class="primary-button compact-btn" type="submit">+Pal</button></div></form>
+              <form id="pip-profile-search" class="pip-pal-invite pip-card-subsection"><label for="pip-profile-query">Find a PIP profile</label><div class="pip-inline-fields"><input id="pip-profile-query" type="search" autocomplete="off"><button class="primary-button compact-btn" type="submit">Search</button></div></form>
+
+              <div class="pip-card-subsection">
+                <p class="pip-panel-kicker">RESULTS</p>
+                <div id="pip-profile-results" class="pip-note-list" aria-live="polite"></div>
+              </div>
+              <div class="pip-card-subsection">
+                <h2>Your Pals</h2>
+                <div id="pip-pal-list" class="pip-note-list" aria-live="polite"></div>
+              </div>
+              <div class="pip-card-subsection">
+                <h2>Invitations</h2>
+                <div id="pip-pal-invitations" class="pip-note-list" aria-live="polite"></div>
+              </div>
+            </aside>
+
+            <section class="pip-editor pip-pal-conversation" aria-label="Post It Pal conversation">
+              <div class="pip-conversation-header">
+                <p class="pip-panel-kicker">CONVERSATION</p>
+                <h2 id="pip-pal-title">Choose a Pal</h2>
+              </div>
+              <div id="pip-pal-messages" class="pip-pal-messages" aria-live="polite"></div>
+              <form id="pip-pal-message-form" class="pip-pal-compose" hidden><label class="sr-only" for="pip-pal-message">Write a private Post It</label><textarea id="pip-pal-message" maxlength="5000" placeholder="Write a Post It…" required></textarea><button class="primary-button compact-btn" type="submit">PIP ↗</button></form>
             </section>
-            <form id="pip-pal-invite-form" class="pip-pal-invite"><label for="pip-pal-email">Invite a Pal by email</label><div><input id="pip-pal-email" type="email" autocomplete="email" required><button class="primary-button compact-btn" type="submit">+Pal</button></div></form>
-            <form id="pip-profile-search" class="pip-pal-invite"><label for="pip-profile-query">Find a PIP profile</label><div><input id="pip-profile-query" type="search" autocomplete="off"><button class="primary-button compact-btn" type="submit">Search</button></div></form>
-            <div id="pip-profile-results" class="pip-note-list" aria-live="polite"></div>
-            <h2>Your Pals</h2><div id="pip-pal-list" class="pip-note-list" aria-live="polite"></div>
-            <h2>Invitations</h2><div id="pip-pal-invitations" class="pip-note-list" aria-live="polite"></div>
-          </aside>
-          <section class="pip-editor pip-pal-conversation" aria-label="Post It Pal conversation">
-            <h2 id="pip-pal-title">Choose a Pal</h2><div id="pip-pal-messages" class="pip-pal-messages" aria-live="polite"></div>
-            <form id="pip-pal-message-form" class="pip-pal-compose" hidden><label class="sr-only" for="pip-pal-message">Write a private Post It</label><textarea id="pip-pal-message" maxlength="5000" placeholder="Write a Post It…" required></textarea><button class="primary-button compact-btn" type="submit">PIP ↗</button></form>
-          </section>
-        </div>
-      </section>
-      <section id="pip-view-noty" class="pip-view" hidden><p class="eyebrow">NOTY / INBOX</p><h2>Notifications</h2><div id="pip-noty-list" class="pip-noty-list" aria-live="polite"></div></section>
-      <section class="pip-account-controls" aria-labelledby="pip-account-title">
+          </div>
+        </section>
+
+        <section id="pip-view-noty" class="pip-view" hidden aria-label="Noty inbox">
+          <div class="pip-noty-shell pip-card">
+            <div class="pip-card-header">
+              <p class="eyebrow">NOTY / INBOX</p>
+              <h2>Notifications</h2>
+              <p class="pip-copy pip-noty-copy">Invitations, accepted requests, and unread Post It activity in one place.</p>
+            </div>
+            <div id="pip-noty-list" class="pip-noty-list" aria-live="polite"></div>
+          </div>
+        </section>
+      </div>
+
+      <section class="pip-account-controls pip-card" aria-labelledby="pip-account-title">
         <p class="eyebrow">ACCOUNT / LIFECYCLE</p>
         <h2 id="pip-account-title">Account controls</h2>
-        <p id="pip-deletion-status" class="micro-note" role="status" aria-live="polite">Loading account status…</p>
-        <button id="pip-schedule-deletion" class="text-button" type="button">Schedule 30-day account deletion</button>
-        <button id="pip-cancel-deletion" class="text-button" type="button" hidden>Cancel scheduled deletion</button>
+        <p class="pip-copy pip-account-copy">Manage deletion requests and final account removal with clear status and safeguards.</p>
+        <p id="pip-deletion-status" class="micro-note pip-deletion-status" role="status" aria-live="polite">Loading account status…</p>
+        <div class="pip-account-actions">
+          <button id="pip-schedule-deletion" class="text-button danger-link" type="button">Schedule 30-day account deletion</button>
+          <button id="pip-cancel-deletion" class="text-button" type="button" hidden>Cancel scheduled deletion</button>
+        </div>
         <div id="pip-finalize-deletion" class="pip-finalize-deletion" hidden>
           <p class="micro-note">Your grace period has ended. Sign in again with your password to permanently remove this account and its notes. Nothing is erased until you confirm here.</p>
           <form id="pip-finalize-deletion-form" class="compact-form">
@@ -102,8 +224,9 @@
           </form>
         </div>
       </section>
-      <p class="micro-note">Your notes are scoped to your signed-in account.</p>
+      <p class="micro-note pip-scope-note">Your notes are scoped to your signed-in account.</p>
     </section>
+
     <footer class="page-footer"><a href="/">← Back to the signal</a><span>PIP / NOTES 004</span></footer>
   </main>
   <script type="module" src="pip.js?v=20261119-2"></script>
