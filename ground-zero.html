@@ -23,7 +23,7 @@
       <a href="/qr/">QR-tech <span>05</span></a>
     </nav>
   </header>
-  <main class="gz-page">
+  <main class="gz-page" id="gz-page" hidden>
     <p id="gz-status" class="gz-status" role="status" aria-live="polite" hidden></p>
     <section class="gz-hero">
       <p class="eyebrow">FJ / GROUND ZERO 00 — OWNER & ADMIN CONTROL CENTER</p>
@@ -55,6 +55,19 @@
       </div>
     </section>
   </main>
+
+  <!-- Auth gate: shown when the visitor is not authenticated or not authorized for Ground Zero. -->
+  <section id="gz-auth-gate" class="gz-auth-gate" hidden>
+    <div class="gz-gate-card">
+      <p class="eyebrow">FJ / GROUND ZERO 00 — ACCESS GATE</p>
+      <h1 id="gz-gate-title">Access restricted</h1>
+      <p id="gz-gate-message" class="gz-sub">Ground Zero 00 is for the owner and authorized admins only.</p>
+      <div class="gz-gate-actions">
+        <a href="/" class="primary-button compact-btn">Go to the signal<span>↗</span></a>
+        <button id="gz-gate-sign-in" class="text-button">Sign in<span>↗</span></button>
+      </div>
+    </div>
+  </section>
   <script type="module" src="ground-zero.js?v=20261126-1"></script>
 </body>
 </html>

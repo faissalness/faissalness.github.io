@@ -22,7 +22,7 @@ const $ = sel => document.querySelector(sel);
 const status = $("#gz-status");
 const API = "https://fj-api.jimyass.workers.dev";
 
-const app = initializeApp(firebaseConfig, "FJGroundZero");
+const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 if (location.hostname === "127.0.0.1") {
@@ -274,6 +274,27 @@ $("#gz-admin-form")?.addEventListener("submit", event => {
 
 function redirectHome() { window.location.href = "/"; }
 
+// Show the access gate instead of silently redirecting, so visitors see a
+// clear message and a way back to the site rather than a blank flash.
+function showAuthGate(message = "Ground Zero 00 is for the owner and authorized admins only.") {
+  const page = $("#gz-page");
+  const gate = $("#gz-auth-gate");
+  const gateMessage = $("#gz-gate-message");
+  if (page) page.hidden = true;
+  if (gate) gate.hidden = false;
+  if (gateMessage) gateMessage.textContent = message;
+  setStatus("");
+}
+
+// Reveal the Ground Zero dashboard for authorized users.
+function showDashboard() {
+  const page = $("#gz-page");
+  const gate = $("#gz-auth-gate");
+  if (page) page.hidden = false;
+  if (gate) gate.hidden = true;
+  setStatus("");
+}
+
 // Ground Zero 00 — deterministic auth state machine (per Firebase docs):
 //   INITIALIZING -> AUTHENTICATED -> AUTHORIZED
 //                -> UNAUTHORIZED (settled but not owner/admin)
@@ -284,12 +305,16 @@ let gzUser = null;
 
 function gzDisplayLoading() {
   setStatus("Verifying access to Ground Zero 00…", "info");
+  const page = $("#gz-page");
+  const gate = $("#gz-auth-gate");
+  if (page) page.hidden = true;
+  if (gate) gate.hidden = true;
   const table = $("#gz-accounts-table");
   if (table) table.hidden = true;
 }
 
 async function gzCheckAuthorization() {
-  if (!gzUser) { gzStatus = "UNAUTHORIZED"; redirectHome(); return; }
+  if (!gzUser) { gzStatus = "UNAUTHORIZED"; showAuthGate("Ground Zero 00 requires sign-in. Please sign in to the FJ website, then return here."); return; }
   if (gzUser.uid === ownerUid) {
     // The owner bypasses every application and permission state.
     gzStatus = "AUTHORIZED";
@@ -300,13 +325,12 @@ async function gzCheckAuthorization() {
       gzStatus = "AUTHORIZED";
     } else {
       gzStatus = "UNAUTHORIZED";
-      setStatus("Ground Zero 00 is exclusively for the owner and authorized admins.", "error");
-      redirectHome();
+      showAuthGate("You are signed in but are not authorized for Ground Zero 00. Contact the owner for access.");
       return;
     }
   }
   gzStatus = "AUTHORIZED";
-  setStatus("");
+  showDashboard();
   try { await loadAccounts(); } catch (error) { setStatus(`Could not load accounts: ${error.message}`, "error"); }
 }
 
@@ -328,6 +352,6 @@ onAuthStateChanged(auth, async user => {
     }
   }
   gzUser = auth.currentUser;
-  if (!gzUser) { gzStatus = "UNAUTHORIZED"; redirectHome(); return; }
+  if (!gzUser) { gzStatus = "UNAUTHORIZED"; showAuthGate(); return; }
   await gzCheckAuthorization();
 });
