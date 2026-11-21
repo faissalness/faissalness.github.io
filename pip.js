@@ -15,6 +15,7 @@ if (location.hostname === "127.0.0.1") {
 const API = "https://fj-api.jimyass.workers.dev";
 let activeUser = null;
 let selectedId = null;
+let newNoteMode = null;
 let unsubscribe = null;
 let notes = [];
 let accountDeletion = null;
@@ -541,7 +542,7 @@ function renderNotes() {
     row.append(restore, remove);
     trashList.append(row);
   }
-  if (!selectedId && activeNotes.length) selectNote(activeNotes[0].id, false);
+  if (!selectedId && !newNoteMode && activeNotes.length) selectNote(activeNotes[0].id, false);
   if (selectedId && !activeNotes.some(note => note.id === selectedId)) selectNote(null, false);
 }
 
@@ -549,6 +550,8 @@ function selectNote(id, repaint = true) {
   selectedId = id;
   const note = notes.find(item => item.id === id);
   protectedNoteUnlocked = false;
+  const previouslyProtected = Boolean(note?.protection);
+  noteHadProtection = previouslyProtected;
   const protectedNote = Boolean(note?.protection);
   $("#pip-note-protected").checked = protectedNote;
   $("#pip-note-protected").disabled = protectedNote;
@@ -725,7 +728,7 @@ $("#pip-sign-out").addEventListener("click", async () => {
   catch { status("Could not sign out. Try again.", "error"); }
 });
 
-$("#pip-new-note").addEventListener("click", () => selectNote(null));
+$("#pip-new-note").addEventListener("click", () => { selectNote(null); newNoteMode = true; });
 
 $("#pip-note-form").addEventListener("submit", async event => {
   event.preventDefault();
@@ -736,7 +739,7 @@ $("#pip-note-form").addEventListener("submit", async event => {
   const content = $("#pip-note-content").value.slice(0, 20000);
   try {
     const protectedNote = $("#pip-note-protected").checked;
-    if (protectedNote && !protectedNoteUnlocked && selectedId) throw new Error("Unlock this note first");
+    if (protectedNote && !protectedNoteUnlocked && selectedId && noteHadProtection) throw new Error("Unlock this note first");
     const password = $("#pip-note-password").value;
     if (protectedNote && password.length < 8) throw new Error("Use a note password with at least 8 characters");
     const protection = protectedNote ? await encryptNotePayload({ title, content }, password) : null;
@@ -747,6 +750,7 @@ $("#pip-note-form").addEventListener("submit", async event => {
     else {
       const created = await addDoc(noteCollection(activeUser.uid), { ...record, createdAt: serverTimestamp() });
       selectedId = created.id;
+      newNoteMode = null;
     }
     await uploadPipAttachments(selectedId);
     await refreshPipAttachments(selectedId);
