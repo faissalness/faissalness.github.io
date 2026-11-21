@@ -317,3 +317,16 @@ This is the newest status and supersedes earlier statements above where they con
 - **Actual results**: full local suite green after fix and allowlist line-ending normalization.
 - **Known limitations**: real browser auth-session verification (Firebase emulator + Playwright) not runnable in this environment; production live verification deferred to integration director.
 - **Exact remaining work**: owner live sign-in verification on production, dashboard load with real accounts, deploy branch via integration director, production release.
+
+### Ground Zero 00 continuation — 2026-11-21 (FLINT — CONTINUE EXISTING WORK)
+
+- **Instruction received**: Ground Zero remains unresolved in production despite prior auth fixes and passing tests; the owner is still redirected to the homepage.
+- **Branch preserved**: `agent/flint-20261121-002415` (prior commit `72a4dd0`, then this session's fix commits).
+- **Evidence gathered (independent trace of the full chain)**:
+  - Live deployed artifact `https://faissalness.github.io/ground-zero.js` was fetched and still contains `initializeApp(firebaseConfig, "FJGroundZero")`, the `authStateReady()` polling fallback, and no error handler -> production serves pre-fix code.
+  - `main` baseline (`7560918`) and live artifact share the named-instance defect; fixes `041b1c3`, `8908231`, `f3f94e6`, and `2f1de48` never reached production, which is why passing tests did not resolve the live owner redirect.
+  - Iceman (`agent/iceman-20261121-002415` @ `2f1de48`) independently adopted the shared-default-app fix, deterministic/error handling, emulator try/catch, and documented joint findings in `ICEMAN_GROUND_ZERO_FINDINGS.md`.
+  - Nemotron Lightning (`agent/nemotron-lightning-20261121-002415` @ `f3f94e6`) added `authStateReady()` before decisions and content suppression (`gzShowContent`) during `INITIALIZING`; assessed as insufficient alone because the shared persistence namespace was still missing.
+- **Fix applied on Flint branch (this session)**: kept the shared default Firebase app instance, deterministic settlement/error handling and deactivated-admin denial; adopted content suppression (`gzDisplayLoading` hides `.gz-hero`/`.gz-page`, `gzShowContent` reveals after authorization) to complete the flash fix without weakening authz.
+- **Tests**: `tests/ground_zero_test.js` extended to **47 checks** (incl. content-suppression check); full master suite: **338 passed, 0 failed** (15/15 suites).
+- **Deployed**: not deployed by this agent; integration director handles the production release.

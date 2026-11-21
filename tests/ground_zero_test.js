@@ -46,6 +46,7 @@ check('Ground Zero has no custom Firebase app instance name', !groundZeroJs.incl
 check('Ground Zero uses the official authStateReady settlement signal without polling delays', groundZeroJs.includes('auth.authStateReady()') && !groundZeroJs.includes('setTimeout'));
 check('Ground Zero exposes the deterministic auth state machine', groundZeroJs.includes('"INITIALIZING"') && groundZeroJs.includes('"AUTHORIZED"') && groundZeroJs.includes('"UNAUTHORIZED"') && groundZeroJs.includes('"ERROR"'));
 check('Ground Zero never authorizes a deactivated admin', groundZeroJs.includes('adminRecord.active !== false'));
+check('Ground Zero hides hero content during INITIALIZING and shows it after authorization', groundZeroJs.includes('gzShowContent') && groundZeroJs.includes('gz-hero'));
 check('Main site reveals Ground Zero 00 for the owner and authorized admins', appJs.includes('#gz-nav') && appJs.includes('getDoc(doc(db, "admins", user.uid))'));
 
 console.log("\n4. Two distinct permission systems");

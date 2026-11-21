@@ -297,6 +297,19 @@ function gzDisplayLoading() {
   setStatus("Verifying access to Ground Zero 00…", "info");
   const table = $("#gz-accounts-table");
   if (table) table.hidden = true;
+  // Hide the hero and main page content while the access decision is pending so
+  // the Ground Zero screen never flashes before authorization is determined.
+  const hero = document.querySelector(".gz-hero");
+  const page = document.querySelector(".gz-page");
+  if (hero) hero.hidden = true;
+  if (page) page.hidden = true;
+}
+
+function gzShowContent() {
+  const hero = document.querySelector(".gz-hero");
+  const page = document.querySelector(".gz-page");
+  if (hero) hero.hidden = false;
+  if (page) page.hidden = false;
 }
 
 async function gzCheckAuthorization(user) {
@@ -323,6 +336,7 @@ async function gzCheckAuthorization(user) {
     return;
   }
   gzStatus = "AUTHORIZED";
+  gzShowContent();
   setStatus("");
   try { await loadAccounts(); } catch (error) { setGzError(`Could not load accounts: ${error.message}`); }
 }
