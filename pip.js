@@ -1,7 +1,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
 import { connectAuthEmulator, getAuth, onAuthStateChanged, reauthenticateWithCredential, signOut, EmailAuthProvider } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 import { addDoc, collection, connectFirestoreEmulator, deleteDoc, doc, getDoc, getDocs, getFirestore, onSnapshot, orderBy, query, serverTimestamp, setDoc, startAfter, Timestamp, updateDoc } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
-import { firebaseConfig } from "./firebase-config.js";
+import { firebaseConfig, ownerUid } from "./firebase-config.js";
 import { decryptNotePayload, encryptNotePayload } from "./note-crypto.mjs";
 
 const $ = selector => document.querySelector(selector);
@@ -789,6 +789,25 @@ async function showPrivateNotes(user) {
   }
   try {
     await ensureFirestoreAccountRecords(user);
+
+    // The owner always has access to PIP and Your Notes.
+    if (user.uid === ownerUid) {
+      stopPendingApprovalPoll();
+      activeUser = user;
+      $("#pip-auth").hidden = true;
+      $("#pip-notes").hidden = false;
+      $("#pip-status").hidden = true;
+      $("#pip-welcome").textContent = user.displayName ? `${user.displayName}'s Notes.` : "Your Notes.";
+      syncAccountLifecycle(user).catch(() => status("Could not load account status. Notes remain protected until it can be checked.", "error"));
+      palApi("/api/users/register", { method: "POST", body: "{}" })
+        .then(refreshPalExperience)
+        .catch(() => status("Your private notes are available; the public account count and Post It Pal could not sync.", "error"));
+      clearInterval(palRefreshTimer);
+      palRefreshTimer = setInterval(() => refreshPalExperience().catch(() => {}), 30000);
+      return;
+    }
+
+    // Ordinary users need an active D1 registration.
     const registration = await palApiForUser(user, "/api/users/register", { method: "POST", body: "{}" });
     // Registration records the account in D1. Ordinary users wait for owner
     // approval: their D1 account stays pending until the owner grants access.
@@ -812,9 +831,12 @@ async function showPrivateNotes(user) {
       return;
     }
   } catch (error) {
-    activeUser = null;
+    // API or network errors must not hide the dashboard. Show the error
+    // status and keep PIP visible so the user can retry or see what happened.
+    activeUser = user;
     $("#pip-auth").hidden = true;
-    $("#pip-notes").hidden = true;
+    $("#pip-notes").hidden = false;
+    $("#pip-status").hidden = false;
     status(error.message || "Could not verify application access.", "error");
     return;
   }
