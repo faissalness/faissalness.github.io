@@ -347,3 +347,20 @@ This is the newest status and supersedes earlier statements above where they con
 - **Integration steps**: reconcile `agent/flint-20261121-002415` (`0578646`) with integration mainline; resolve conflicts in `ground-zero.js` and `tests/ground_zero_test.js`; run full master suite (target: 338 passed / 0 failed); push integration branch; trigger GitHub Pages deploy; verify live artifact contains no `FJGroundZero` named instance and includes `gzShowContent`.
 - **Live acceptance checks (post-deploy, real owner session required)**: owner opens `/ground-zero/` -> stays; refresh -> stays; dashboard loads via `GET /api/admin/accounts`; owner actions authorized; unauthorized user -> blocked; genuine errors shown as errors.
 - **Backend**: no Worker/Firestore rules change required for this fix; keep owner-only backend enforcement (`sub === OWNER_UID`, `email_verified`) intact. Handoff doc: `GROUND_ZERO_BACKEND_CONTRACT.md`.
+
+### Ground Zero 00 route + deployment failure investigation - 2026-11-21 (FLINT - CONTINUE EXISTING WORK)
+
+- **Instruction received**: new production symptom - clicking the Ground Zero homepage menu item only makes it blink; it does not load the page.
+- **Live site state established (verified this round)**:
+  - Current GitHub `main` HEAD: `de6b091243ad5f0f2bfe215f1bc258a8d82fe482` (contains Lightning fix `8d9a800`).
+  - Latest successful GitHub Pages deploy: run `44843793786`, headSha `de6b091...`, conclusion success, finished 2026-11-21T00:26:07Z -> deployed artifact is CURRENT with `main`, NOT stale.
+  - Live `https://faissalness.github.io/ground-zero.js` fetched this round is byte-identical to `main@de6b091:ground-zero.js` (13718 bytes, EQUAL) -> production serves the Lightning-merged code that RETAINS the named Firebase app instance `FJGroundZero`.
+  - Live `https://faissalness.github.io/ground-zero.html` contains `<base href="/">` -> correctly produced by the Pages workflow sed injection (source never contained it) -> NOT a defect.
+  - Live route checks: `/ground-zero/` -> 200, `/ground-zero` -> 200, `/ground-zero.html` -> 200; `/Ground-Zero/` -> 404 (case-sensitive; canonical lowercase route in use).
+  - Live homepage HTML and styles.css are byte-identical to `main@de6b091`.
+- **Static routing audit**: Pages workflow allowlist covers all Ground Zero assets; `cp -- ground-zero.html dist/ground-zero/index.html` + sed `<base href="/">` injection present; clean route packaging present; CSP allows required Firebase origins; NO routing defect proven (no 404 on canonical `/ground-zero/`, base href injected correctly).
+- **Blink root cause (now evidenced)**: deployed/branch `ground-zero.js` calls `gzDisplayLoading()` (hide `.gz-hero`/`.gz-page`) only inside the `onAuthStateChanged` callback; before the first auth settlement the content stays visible -> Ground Zero content paints/flashes -> then hidden -> then auth decision (show owner / redirect signed-out) -> perceived blink + "does not load".
+- **Regression tests added this round** (Flint-owned route/deployment coverage): 5 new checks in `tests/ground_zero_test.js` (clean `/ground-zero/` nav target, clean-route artifact + injected base href, content suppressed before authorization decisions, homepage nav routing into dedicated page, no raw `.html` nav target). Ground Zero suite now **52 checks**; full master suite: **343 passed, 0 failed**.
+- **Deployed vs branch build**: deployed artifact == `main@de6b091` (Lightning-merged code retaining named instance); Flint branch build (`c2dda52`) uses shared default instance + deterministic state machine -> deployed artifact does NOT yet include the Flint fix -> integration director must deploy branch.
+- **Keep unresolved**: Ground Zero must remain FAILED until production navigation and actual authorized access are verified.
+
