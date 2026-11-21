@@ -378,3 +378,22 @@ This is the newest status and supersedes earlier statements above where they con
 - **Branch name**: `agent/flint-20261121-002415`.
 - **Exact remaining work**: deploy Flint branch fix via integration director; post-deploy live verification (owner + authorized admin access, refresh, navigation, dashboard load, owner actions, unauthorized block, error handling); real acceptance.
 
+
+### Content Security Policy fix - 2026-11-21 (FLINT - CONTINUE EXISTING WORK)
+
+- **Instruction received**: investigate the deployed FJ website Content Security Policy; fix any confirmed frontend CSP configuration problems; source maps reported blocked (not assumed functional); identify authoritative CSP source; correct only genuinely necessary frontend directives; preserve security; deploy the changes; verify the LIVE website's response headers and frontend resources.
+
+- **Investigation findings**:
+  - **Authoritative CSP source**: HTML `<meta http-equiv="Content-Security-Policy">` (live HTTP response headers for `/` and `/ground-zero/` carry NO CSP; no `_headers` file exists in repo; source vs deployed/live meta CSP were identical before the fix -> the meta tag is the authoritative, sole source).
+  - **Source maps**: NOT the cause of functional failures - `script-src 'self' https://www.gstatic.com` already permits the Firebase gstatic source-map origins; no genuine CSP defect from source maps.
+  - **Genuine CSP gaps confirmed**: `connect-src` omitted the Firebase Installations API origin (`https://firebaseinstallations.googleapis.com`) and the Firebase Auth handler origin (`https://fj-website-384fd.firebaseapp.com`); no `frame-src` was declared for the Firebase Auth handler iframe origin.
+  - **Fix applied**: added `frame-src 'self' https://fj-website-384fd.firebaseapp.com;` and extended `connect-src` with `https://firebaseinstallations.googleapis.com https://fj-website-384fd.firebaseapp.com` on all public pages carrying a CSP (index, meet, gods, notes, random, qr, pip, ground-zero).
+
+- **Changes**: CSP corrected in 8 public HTML pages; regression checks added in `tests/pages_allowlist_test.js` (CSP must allow gstatic script-src, Firebase Installations connect-src, Firebase Auth handler origin); master suite green.
+
+- **Tests**: `node tests/run_all_tests.js` -> **344 passed, 0 failed** (15/15 suites; Pages allowlist 8/8).
+
+- **Deploy**: Flint branch commit pending push; production deploy via integration director / Pages release.
+
+- **Keep unresolved**: Ground Zero must remain FAILED until production navigation and actual authorized access are verified (unchanged by this CSP fix).
+

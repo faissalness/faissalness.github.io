@@ -24,4 +24,13 @@ assert.ok(workflow.includes("-iname '*.map'") && workflow.includes("-iname '*wor
 assert.ok(workflow.includes('cp -- pip.html dist/pip/index.html') && workflow.includes('cp -- qr.html dist/qr/index.html'),
   'The PIP and QR clean routes must be included in the published artifact');
 
-console.log('=== PAGES PUBLIC ARTIFACT ALLOWLIST: 7 / 7 PASSED ===');
+const publicPages = ['index.html', 'meet.html', 'gods.html', 'notes.html', 'random.html', 'qr.html', 'pip.html', 'ground-zero.html'];
+const allPublicPagesCsp = publicPages.map(file => fs.readFileSync(path.join(root, file), 'utf8')).join('\n');
+assert.ok(allPublicPagesCsp.includes("script-src 'self' https://www.gstatic.com"),
+  'Published CSP must allow the Firebase SDK script source from gstatic');
+assert.ok(allPublicPagesCsp.includes('https://firebaseinstallations.googleapis.com'),
+  'Published CSP connect-src must allow the Firebase Installations API');
+assert.ok(allPublicPagesCsp.includes('https://fj-website-384fd.firebaseapp.com'),
+  'Published CSP must allow the Firebase Auth handler origin');
+
+console.log('=== PAGES PUBLIC ARTIFACT ALLOWLIST: 8 / 8 PASSED ===');
