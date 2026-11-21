@@ -284,20 +284,40 @@ let gzUser = null;
 
 function gzDisplayLoading() {
   setStatus("Verifying access to Ground Zero 00…", "info");
+  // Hide the accounts table during loading
   const table = $("#gz-accounts-table");
   if (table) table.hidden = true;
+  // Hide the hero and main page content to prevent title flash
+  const hero = document.querySelector(".gz-hero");
+  const page = document.querySelector(".gz-page");
+  if (hero) hero.hidden = true;
+  if (page) page.hidden = true;
+}
+
+function gzShowContent() {
+  // Show the hero and main page content after authorization is determined
+  const hero = document.querySelector(".gz-hero");
+  const page = document.querySelector(".gz-page");
+  if (hero) hero.hidden = false;
+  if (page) page.hidden = false;
 }
 
 async function gzCheckAuthorization() {
-  if (!gzUser) { gzStatus = "UNAUTHORIZED"; redirectHome(); return; }
+  if (!gzUser) {
+    gzStatus = "UNAUTHORIZED";
+    redirectHome();
+    return;
+  }
   if (gzUser.uid === ownerUid) {
     // The owner bypasses every application and permission state.
     gzStatus = "AUTHORIZED";
+    gzShowContent();
   } else {
     try { await loadAdmins(); } catch (_) { admins = new Map(); }
     renderAdmins();
     if (admins.has(gzUser.uid)) {
       gzStatus = "AUTHORIZED";
+      gzShowContent();
     } else {
       gzStatus = "UNAUTHORIZED";
       setStatus("Ground Zero 00 is exclusively for the owner and authorized admins.", "error");
@@ -312,13 +332,9 @@ async function gzCheckAuthorization() {
 
 onAuthStateChanged(auth, async user => {
   gzDisplayLoading();
-  if (user) {
-    gzUser = user;
-    await gzCheckAuthorization();
-    return;
-  }
-  // No user yet: never redirect during INITIALIZING. Wait for auth-state
-  // settlement via the official API (auth.authStateReady()), then re-check.
+  // Always wait for auth state to settle via the official API before
+  // making any authorization decisions. This prevents redirect before
+  // the auth state has settled (the "flash" defect).
   try {
     await auth.authStateReady();
   } catch (_) {
@@ -328,6 +344,7 @@ onAuthStateChanged(auth, async user => {
     }
   }
   gzUser = auth.currentUser;
-  if (!gzUser) { gzStatus = "UNAUTHORIZED"; redirectHome(); return; }
+
+  // After settlement, check authorization
   await gzCheckAuthorization();
 });
