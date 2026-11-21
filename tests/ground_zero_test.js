@@ -21,6 +21,7 @@ const notesHtml = fs.readFileSync(path.join(ROOT, 'notes.html'), 'utf8');
 const pipHtml = fs.readFileSync(path.join(ROOT, 'pip.html'), 'utf8');
 const appJs = fs.readFileSync(path.join(ROOT, 'app.js'), 'utf8');
 const workerJs = fs.readFileSync(path.join(ROOT, 'backend', 'worker.js'), 'utf8');
+const workflow = fs.readFileSync(path.join(ROOT, '.github', 'workflows', 'deploy-pages.yml'), 'utf8');
 
 let count = 0;
 function check(name, condition) { assert.ok(condition, name); count += 1; console.log(` PASS: ${name}`); }
@@ -30,17 +31,28 @@ check('ground-zero.html exists as a dedicated page', fs.existsSync(path.join(ROO
 check('ground-zero.html is the Ground Zero 00 control center', groundZeroPage.includes('Ground Zero <span>00</span>') && groundZeroPage.includes('OWNER & ADMIN CONTROL CENTER'));
 check('ground-zero.js holds the page logic', fs.existsSync(path.join(ROOT, 'ground-zero.js')));
 check('Ground Zero 00 route is deployed (dist/ground-zero/index.html)', fs.readFileSync(path.join(ROOT, '.github', 'workflows', 'deploy-pages.yml'), 'utf8').includes('cp -- ground-zero.html dist/ground-zero/index.html'));
+check('Ground Zero 00 clean route artifact is packaged with injected base href', workflow.includes('cp -- ground-zero.html dist/ground-zero/index.html') && workflow.includes('<base href="/">'));
+check('Ground Zero 00 homepage nav uses the clean /ground-zero/ route', indexHtml.includes('id="gz-nav"') && indexHtml.includes('href="/ground-zero/"') && !indexHtml.includes('href="/ground-zero.html"'));
 
 console.log("\n2. Navigation: Ground Zero 00 before Meet 01");
 for (const file of ['index.html', 'notes.html', 'pip.html']) {
   const html = fs.readFileSync(path.join(ROOT, file), 'utf8');
   check(`${file} has Ground Zero 00 first in the nav`, html.indexOf('id="gz-nav"') > -1 && html.indexOf('id="gz-nav"') < html.indexOf('href="/meet/"'));
 }
+check('Homepage Ground Zero 00 navigation routes into the dedicated Ground Zero page', indexHtml.includes('id="gz-nav"') && indexHtml.includes('href="/ground-zero/'));
+check('Homepage Ground Zero 00 navigation does not target a raw .html artifact path', !indexHtml.includes('href="/ground-zero.html"'));
 
 console.log("\n3. Owner/admin-exclusive access");
 check('Ground Zero redirects unauthenticated visitors to the main website', groundZeroJs.includes('window.location.href = "/"'));
 check('Ground Zero allows the owner by the immutable UID', groundZeroJs.includes('gzUser.uid === ownerUid') && groundZeroJs.includes('admins.has(gzUser.uid)'));
 check('Ground Zero reads the admins collection for authorized admins', groundZeroJs.includes('collection(db, "admins")'));
+check('Ground Zero uses the shared default Firebase app instance for auth state', groundZeroJs.includes('const app = initializeApp(firebaseConfig);'));
+check('Ground Zero has no custom Firebase app instance name', !groundZeroJs.includes('initializeApp(firebaseConfig, "FJGroundZero")'));
+check('Ground Zero uses the official authStateReady settlement signal without polling delays', groundZeroJs.includes('auth.authStateReady()') && !groundZeroJs.includes('setTimeout'));
+check('Ground Zero exposes the deterministic auth state machine', groundZeroJs.includes('"INITIALIZING"') && groundZeroJs.includes('"AUTHORIZED"') && groundZeroJs.includes('"UNAUTHORIZED"') && groundZeroJs.includes('"ERROR"'));
+check('Ground Zero never authorizes a deactivated admin', groundZeroJs.includes('adminRecord.active !== false'));
+check('Ground Zero hides hero content during INITIALIZING and shows it after authorization', groundZeroJs.includes('gzShowContent') && groundZeroJs.includes('gz-hero'));
+check('Ground Zero suppresses content before any authorization decision runs', groundZeroJs.includes('gzDisplayLoading') && groundZeroJs.includes('gzCheckAuthorization') && groundZeroJs.indexOf('gzDisplayLoading') < groundZeroJs.indexOf('gzCheckAuthorization'));
 check('Main site reveals Ground Zero 00 for the owner and authorized admins', appJs.includes('#gz-nav') && appJs.includes('getDoc(doc(db, "admins", user.uid))'));
 
 console.log("\n4. Two distinct permission systems");
@@ -75,6 +87,7 @@ for (const removed of ['pip-login-form', 'pip-register-form', 'pip-returning', '
   check(`PIP has no "${removed}"`, !pipHtml.includes(`id="${removed}"`));
 }
 check('PIP redirects unauthenticated users to the main website', pipJs.includes('window.location.href = "/"'));
+check('PIP + Notes use the shared default Firebase app instance', pipJs.includes('const app = initializeApp(firebaseConfig);') && !pipJs.includes('initializeApp(firebaseConfig, "FJYourNotes")'));
 check('PIP page copy says authentication happens on the main website', pipHtml.includes('Users authenticate on the main FJ website'));
 check('Notes has no neon gate or second login', !notesHtml.includes('unauthorized-gate') && !notesHtml.includes('notes-gate-password'));
 const notesJs = fs.readFileSync(path.join(ROOT, 'notes.js'), 'utf8');

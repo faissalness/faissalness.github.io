@@ -4,7 +4,26 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="referrer" content="strict-origin-when-cross-origin">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; script-src 'self' https://www.gstatic.com; connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com wss://firestore.googleapis.com https://firebasestorage.googleapis.com https://www.googleapis.com https://en.wikipedia.org https://www.gstatic.com; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; frame-src 'self' https://fj-website-384fd.firebaseapp.com; base-uri 'self'; object-src 'none'; form-action 'self'; script-src 'self' https://www.gstatic.com; connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com wss://firestore.googleapis.com https://firebasestorage.googleapis.com https://www.googleapis.com https://en.wikipedia.org https://www.gstatic.com https://firebaseinstallations.googleapis.com https://fj-website-384fd.firebaseapp.com; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com">
+<title>FJ</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<main class="stage" id="random-root">
+    <div class="redirect-card">
+        <p class="redirect-mark">FJ</p>
+        <p id="random-status">Choosing a page…</p>
+        <a id="random-link" href="/">Back to FJ</a>
+    </div>
+</main>
+<noscript>
+    <p class="redirect-note">JavaScript chooses the random page. Open the FJ home page and use the QR code from a browser that runs JavaScript.</p>
+</noscript>
+<script type="module" src="random.js"></script>
+</body>
+</html>
+ img-src 'self' data: blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com">
 <title>FJ</title>
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="styles.css">
