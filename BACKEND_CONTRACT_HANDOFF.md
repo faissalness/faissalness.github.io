@@ -5,6 +5,57 @@ Branch: `agent/hy4-20261121-002415` (backend/security only; no frontend files ed
 This is the **authoritative backend authorization contract** after the current audit. It
 supersedes conflicting statements in earlier handoffs where they disagree.
 
+## 0. Ground Zero blink: navigation investigation and reconciliation (2026-11-21)
+
+**The Worker is not involved in the initial navigation failure.** The homepage menu entry is a
+plain anchor `<a href="/ground-zero/" id="gz-nav">` (`index.html`); no click handler calls
+`preventDefault()` for it (`app.js` only toggles its `hidden` state for owner/admins). Clicking it
+therefore issues a normal browser **document request** to `/ground-zero/`.
+
+Live read-only evidence:
+
+- `GET https://faissalness.github.io/ground-zero/` → **200** (document request succeeds).
+- `GET https://faissalness.github.io/ground-zero.js` → **200**, but still contains
+  `initializeApp(firebaseConfig, "FJGroundZero")`. Firebase Auth persistence is app-name scoped,
+  so the owner session written by the default app on the main site is invisible to that page.
+  The settled state becomes signed-out and the page calls `redirectHome()` → `window.location.href="/"`.
+  **That is the blink/redirect, and it is entirely frontend/deployment.**
+- Production Worker root → 200 `{"status":"FJ API Operational"}`;
+  unauthenticated `GET /api/admin/accounts` → **401**; forged token `POST /api/admin/permissions`
+  → **403**; OPTIONS preflight from `https://faissalness.github.io` → 200 with the correct
+  `Access-Control-Allow-Origin` and `Cache-Control: no-store`; `Origin: null` preflight → no ACAO.
+  The backend is alive, CORS is correct, and authorization fails closed.
+- Wrangler read-only deployment history: latest production Worker is
+  `6cf07e04-4584-4ec5-93f1-cc3d44e622e5`, created 2026-11-20T21:15Z. **My backend changes
+  (2026-11-21) are NOT deployed.** Production still runs the earlier owner-only Worker.
+- `wrangler d1 migrations list fj-api-state --remote` → "No migrations to apply", so migration
+  0004 is already applied; the newly tracked file is repository consistency only.
+
+**Reconciliation with Flint's `GROUND_ZERO_BACKEND_CONTRACT.md`:** Flint's handoff states all
+`/api/admin/*` endpoints must remain owner-only. This branch keeps that rule for every
+**destructive or privacy-sensitive** operation (`delete`, `lookup`, `notify-approval`, immutable
+owner protection). For the non-destructive delegated administrator workflow that Flint's own
+frontend implements (active `admins/{uid}` records), the Worker additionally accepts an active
+admin on the read endpoints, approval/revocation and suspend/reactivate — each verified from the
+caller's Firebase ID token against Firestore, never from frontend state. Ordinary users and
+deactivated admins are always 403. Both documents now agree on the security boundary:
+**owner authority is immutable; admin authority is delegated, backend-verified, scoped and
+immediately revocable.** Flint's "owner-only" wording applies to the destructive subset.
+
+**API failures never cancel navigation.** Worker errors are JSON with explicit HTTP status codes
+(401/403/404/503) and are CORS-visible to the site origin. Only the frontend can redirect a loaded
+document. The deployed `ground-zero.js` redirects from its own auth-state machine, not from an API
+response. Frontend agents must fix the deployed artifact (shared default app instance) and render
+API errors in place; no backend change can make a document navigate.
+
+**Coordination issue for Flint/Iceman/Lightning:** `ground-zero.js` calls
+`getDocs(collection(db, "admins"))` to load the admin list. Current Firestore rules allow a
+non-owner admin to read only **their own** admin document, so that collection query fails for
+delegated admins and their frontend authorization collapses before any Worker call. This is a
+frontend-query/rules mismatch, not a Worker defect. I have not changed Firestore rules for it:
+fixing it requires an agreed rules change (or a per-UID `getDoc`) plus a rules deployment by the
+integration director. Do not solve it by weakening owner rules.
+
 ## 1. Identity and authority model
 
 | Principal | How the backend verifies it | Authority |

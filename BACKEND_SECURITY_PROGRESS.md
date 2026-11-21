@@ -143,6 +143,23 @@ and `origin/agent/nemotron-super-vl-*`.
     frontend obligations, and integration/deployment requirements for Flint, Iceman, Lightning and
     DeepSeek. No frontend file was edited and no production system was changed.
 
+## Third pass — Ground Zero blink investigation (2026-11-21)
+
+- Established that the homepage Ground Zero entry is a plain anchor to `/ground-zero/`; no
+  JavaScript intercepts the click. A browser document request therefore **does** occur, so the
+  Worker cannot cause the initial navigation failure.
+- Live checks: `/ground-zero/` → 200; deployed `ground-zero.js` → 200 but still uses the named
+  Firebase app `FJGroundZero` (persisted owner session invisible → settled signed-out →
+  `redirectHome()`). That is the blink. Worker root 200; unauthenticated admin endpoint 401;
+  forged token 403; site-origin CORS preflight correct; `Origin: null` not allowed.
+- Production Worker version verified read-only via Wrangler: `6cf07e04-4584-4ec5-93f1-cc3d44e622e5`
+  (2026-11-20T21:15Z). **My backend changes are not deployed.** D1 reports no pending migrations.
+- Reconciled Flint's owner-only handoff with the delegated-admin implementation: destructive and
+  privacy-sensitive operations stay owner-only; non-destructive admin work is backend-verified via
+  Firestore and immediately revocable. Full matrix is in `BACKEND_CONTRACT_HANDOFF.md`.
+- No backend code defect was found that could cancel navigation or blank the page; no security
+  restriction was removed. No frontend file was edited and no production system was changed.
+
 ## Identity
 
 - Branch: `agent/hy4-20261121-002415`
