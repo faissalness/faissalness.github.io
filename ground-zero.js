@@ -296,7 +296,20 @@ function setGzError(message) {
 function gzDisplayLoading() {
   setStatus("Verifying access to Ground Zero 00ΓÇª", "info");
   const table = $("#gz-accounts-table");
+  const hero = document.querySelector(".gz-hero");
+  const cards = document.querySelectorAll(".gz-card");
   if (table) table.hidden = true;
+  if (hero) hero.hidden = true;
+  cards.forEach(card => { card.hidden = true; });
+}
+
+function gzShowAuthorizedUI() {
+  const table = $("#gz-accounts-table");
+  const hero = document.querySelector(".gz-hero");
+  const cards = document.querySelectorAll(".gz-card");
+  if (hero) hero.hidden = false;
+  cards.forEach(card => { card.hidden = false; });
+  if (table) table.hidden = false;
 }
 
 async function gzCheckAuthorization(user) {
