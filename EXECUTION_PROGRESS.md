@@ -364,3 +364,17 @@ This is the newest status and supersedes earlier statements above where they con
 - **Deployed vs branch build**: deployed artifact == `main@de6b091` (Lightning-merged code retaining named instance); Flint branch build (`c2dda52`) uses shared default instance + deterministic state machine -> deployed artifact does NOT yet include the Flint fix -> integration director must deploy branch.
 - **Keep unresolved**: Ground Zero must remain FAILED until production navigation and actual authorized access are verified.
 
+### Ground Zero 00 final status report - 2026-11-21 (FLINT - CONTINUE EXISTING WORK)
+
+- **Branch**: `agent/flint-20261121-002415`
+- **Commit (this round)**: `18f206f896fc1b096527e086ca1ee071ccf6f0d5` - "Ground Zero 00 route investigation: add navigation and deployment regression coverage"
+- **Commit history on branch**: `18f206f` -> `c2dda52` -> `0578646` -> `72a4dd0` (auth fix) -> `7560918` (main baseline).
+- **Implemented changes this round**: no product-code change required (static routing defect not proven); added 5 regression checks for homepage-to-Ground-Zero route and direct route loading in `tests/ground_zero_test.js`.
+- **Modified files this round**: `tests/ground_zero_test.js`, `tests/run_all_tests.js`, `EXECUTION_PROGRESS.md`.
+- **Tests executed**: full master suite (`node tests/run_all_tests.js`) -> **343 passed, 0 failed** (15/15 suites; Ground Zero 00 suite 52/52; Pages allowlist 7/7; workflow 5; owner dashboard audit 37).
+- **Actual results**: live site state established (origin/main HEAD `de6b091...`; latest successful Pages deploy run `44843793786` headSha `de6b091...` SUCCESS -> deployed artifact current with main; live GZ JS byte-identical to main `de6b091` retaining named instance; `/ground-zero/` -> 200; no routing defect proven); blink root cause evidenced (content suppression only inside auth callback, pre-settlement content visible); regression tests added and green.
+- **Known limitations**: real browser/live-owner acceptance not performed in this environment; Ground Zero remains FAILED until post-deploy real navigation + authorized access verified; deploy of Flint branch fix pending integration director.
+- **Commit hash**: `18f206f896fc1b096527e086ca1ee071ccf6f0d5` (branch tip).
+- **Branch name**: `agent/flint-20261121-002415`.
+- **Exact remaining work**: deploy Flint branch fix via integration director; post-deploy live verification (owner + authorized admin access, refresh, navigation, dashboard load, owner actions, unauthorized block, error handling); real acceptance.
+
