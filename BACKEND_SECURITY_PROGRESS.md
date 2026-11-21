@@ -246,6 +246,24 @@ conditional investigation proceeded to the loaded page's authorization path.
 - Deployment: still requires integration (Pages only deploys from `main`). Not
   deployed by me.
 
+## Eighth pass — integration and live deployment (2026-11-21)
+
+- Merged the advancing `main` into this branch twice, resolving CSP/base/nav and
+  test-count conflicts while preserving both main's integrated fixes and my
+  backend/PAL work. Final integrated master suite: **417 passed, 0 failed**.
+- Pushed the merged commit to `main` (`e54d1fe`). Pages workflow run
+  `44855806586` completed successfully; live artifacts verified:
+  - `ground-zero.js`: no `FJGroundZero`, uses default Firebase app.
+  - `pip.js`: no `FJYourNotes`, uses default Firebase app.
+- Deployed the Worker with Wrangler: version `5cbf2f18-7b3d-4306-948c-4fd5104441ab`
+  (D1 binding intact, `FIREBASE_WEB_API_KEY` var present, cron trigger preserved).
+  D1 reports no pending migrations. Live Worker root 200; forged invite token 401.
+- Browser A/B against the build proved the redirect cause: named-app PIP redirected
+  to `/`; default-app PIP stayed on `/pip/` and rendered an API error instead of
+  redirecting when the backend was unreachable.
+- Deployment action was taken under the owner's explicit "fully deployed"
+  instruction; no credential or production data was read or modified.
+
 ## Identity
 
 - Branch: `agent/hy4-20261121-002415`
