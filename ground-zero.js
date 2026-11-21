@@ -308,8 +308,8 @@ function gzDisplayLoading() {
 function gzShowContent() {
   const hero = document.querySelector(".gz-hero");
   const page = document.querySelector(".gz-page");
-  if (hero) hero.hidden = false;
-  if (page) page.hidden = false;
+  if (hero) hero.removeAttribute("hidden");
+  if (page) page.removeAttribute("hidden");
 }
 
 async function gzCheckAuthorization(user) {

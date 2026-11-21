@@ -8,18 +8,9 @@ Step Inside is a small personal space for notes, quiet communication, and a calm
 
 ## Explore
 
-- **Ground Zero 00** — Owner/admin control center (owner and authorized admins only)
-- **Meet** — 01
-- **To the gods** — 02
-- **Notes** — 03
 - **PIP + Notes** — 04
-- **QR-tech** — 05
 
-## Authentication
 
-Sign in with your email address and password through the main FJ website. All FJ applications — PIP, Notes, Your Notes, and the Ground Zero control center — use your main website session; there is no separate second login.
-
-The Ground Zero control center is exclusively available to the owner (`hDbzbNTC7pOuU2UFCjFksopbgaG3`) and explicitly authorized administrators.
 
 ## Ground Zero 00
 
