@@ -64,7 +64,7 @@ existing test suite. Baseline Worker suite passed; baseline master suite was 325
 ## Modified files
 
 - `backend/worker.js` — authorization, lifecycle, deletion, validation, sanitization.
-- `tests/backend_security_regression_test.js` — **new**, 24 targeted security assertions.
+- `tests/backend_security_regression_test.js` — **new**, 40 targeted security assertions.
 - `tests/firestore_security_rules_test.js` — new suffix-agreement simulator case (75 total).
 - `tests/fake_d1.js` — test double now faithfully emulates the Worker's status UPDATE statements
   (the previous version masked the cancellation escalation bug).
@@ -77,7 +77,7 @@ existing test suite. Baseline Worker suite passed; baseline master suite was 325
 
 ## Tests actually executed and results
 
-- `node tests/backend_security_regression_test.js` — **24/24 PASS**.
+- `node tests/backend_security_regression_test.js` — **40/40 PASS**.
   (Before the fix it failed on "cancelling deletion does NOT re-enable revoked PIP", confirming the
   vulnerability was real rather than theoretical.)
 - `node tests/worker_backend_test.js` — **PASS** (76 assertions).
@@ -86,7 +86,7 @@ existing test suite. Baseline Worker suite passed; baseline master suite was 325
 - `node tests/owner_approval_dashboard_test.js`, `node tests/website_audit_test.js`,
   `node tests/human_verification_test.js`, `node tests/note_crypto_test.mjs`,
   `node tests/qr_client_test.js` — all PASS.
-- `node tests/run_all_tests.js` — **357 passed, 0 failed, exit 0** across 16 suites.
+- `node tests/run_all_tests.js` — **373 passed, 0 failed, exit 0** across 16 suites.
 - `node --check backend/worker.js`, `node --check functions/access-approval-trigger.js`,
   `node --check tests/backend_security_regression_test.js`, `node --check tests/fake_d1.js` — PASS.
 - `git diff --check` — PASS.
@@ -107,8 +107,44 @@ existing test suite. Baseline Worker suite passed; baseline master suite was 325
   (`into a quite space`). That is a frontend/branding responsibility (Flint / LongCat); no frontend
   file was touched. Flagged for the integration director.
 
+## Second audit pass — Ground Zero / cross-layer consistency
+
+Coordination performed by reading (not editing) `origin/agent/flint-*` (`GROUND_ZERO_BACKEND_CONTRACT.md`),
+`origin/agent/iceman-*` (`ICEMAN_GROUND_ZERO_FINDINGS.md`), `origin/agent/nemotron-lightning-*`
+and `origin/agent/nemotron-super-vl-*`.
+
+11. **Contract alignment.** Flint's handoff states that `POST /api/admin/accounts/{uid}/reactivate`
+    restores account **and** PIP/Notes access. My first pass had changed that to a non-clobbering
+    update. Because that action is reachable only through backend-verified owner/admin authority,
+    the contract behavior was restored. The **real** privilege escalation (ordinary user regaining
+    revoked access via self-service `schedule` + `cancel`) remains fixed and is separately tested.
+
+12. **Delegated Ground Zero administrators.** The frontend treats Firestore `admins/{uid}` with
+    `active !== false` as authorized, but every `/api/admin/*` endpoint previously required the
+    immutable owner UID — so a valid admin could load the dashboard and then be blocked by 403s.
+    The Worker now verifies active admin status itself on every request using the caller's own
+    Firebase ID token against Firestore's self-read rule (no cache, so deactivation is immediate;
+    errors and missing config fail closed). Active admins may list accounts/users, approve/revoke,
+    and suspend/reactivate. Deletion, owner-only email lookup and notification remain owner-only,
+    as does protection of the immutable owner account. The public Firebase Web API key used for
+    this read is declared in `backend/wrangler.toml` and is already public in `firebase-config.js`.
+
+13. **Permission-state consistency.** `POST /api/admin/permissions` now also writes
+    `applicationPermissions/{uid}` through the Admin SDK when `FIREBASE_ADMIN_KEY` is configured,
+    so a D1 change cannot leave a revoked user with live Firestore access. The response includes
+    `firestoreMirrored` so the frontend knows when it still must mirror the decision itself.
+
+14. **Data integrity / deployment safety.** `backend/migrations/0004_registered_email_lookup.sql`
+    (adds `email_digest` used by owner email lookup) existed only as an untracked local file even
+    though it was applied to production D1. It is now tracked so a clean environment can reproduce
+    the schema. Deployment note: Wrangler's migration history should skip it; do not re-run manually.
+
+15. **Coordination document.** `BACKEND_CONTRACT_HANDOFF.md` records the authorization matrix,
+    frontend obligations, and integration/deployment requirements for Flint, Iceman, Lightning and
+    DeepSeek. No frontend file was edited and no production system was changed.
+
 ## Identity
 
 - Branch: `agent/hy4-20261121-002415`
-- Implementation commit: `0b8cb82486182ee18226a4e91c9c42489516537e`
+- First implementation commit: `0b8cb82486182ee18226a4e91c9c42489516537e`
 - Remote: pushed to `origin/agent/hy4-20261121-002415`; no other branch was modified.

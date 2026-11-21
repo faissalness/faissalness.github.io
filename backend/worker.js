@@ -254,6 +254,37 @@ function cleanDisplayName(value) {
   return String(value || "").replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, 80);
 }
 
+function isOwnerIdentity(identity) {
+  return identity?.sub === OWNER_UID && identity.email_verified === true;
+}
+
+// Ground Zero administrator authority is delegated by the owner through
+// Firestore `admins/{uid}`. The Worker verifies it on every request using the
+// caller's own Firebase ID token and Firestore's self-read rule, so a browser
+// cannot grant itself admin rights and a deactivated admin loses access at once.
+// No result is cached. Owner authority never depends on this lookup.
+async function isActiveAdmin(request, identity, env) {
+  if (!identity || identity.email_verified !== true) return false;
+  if (identity.sub === OWNER_UID) return true;
+  const apiKey = env?.FIREBASE_WEB_API_KEY;
+  if (typeof apiKey !== "string" || !apiKey) return false;
+  const token = (request.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
+  if (!token) return false;
+  const url = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents/admins/${encodeURIComponent(identity.sub)}?key=${encodeURIComponent(apiKey)}`;
+  try {
+    const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    if (!response.ok) return false;
+    const document = await response.json();
+    const active = document?.fields?.active;
+    // A missing `active` field means active, matching the Ground Zero contract;
+    // any explicit non-boolean or false value fails closed.
+    return !active || active.booleanValue === true;
+  } catch (error) {
+    console.error("Ground Zero admin authorization check failed:", error.message);
+    return false;
+  }
+}
+
 function decodeBase64Url(value) {
   if (typeof value !== "string" || !/^[A-Za-z0-9_-]+$/.test(value)) throw new Error("Malformed JWT");
   const base64 = value.replace(/-/g, "+").replace(/_/g, "/");
@@ -471,7 +502,7 @@ export default {
     if (url.pathname === "/api/admin/permissions" && request.method === "POST") {
       try {
         const identity = await readIdentity();
-        if (!identity || identity.sub !== OWNER_UID || identity.email_verified !== true) {
+        if (!identity || !await isActiveAdmin(request, identity, env)) {
           return new Response(JSON.stringify({ error: "Administrator access denied" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         }
         const body = await request.json();
@@ -498,8 +529,22 @@ export default {
             await env.DB.prepare(`UPDATE registered_users SET ${statusColumn} = 'revoked' WHERE uid = ?`).bind(uid).run();
           }
         }
+        // Mirror the decision into the Firestore permission document whenever a
+        // trusted backend is available. Firestore rules are the authoritative gate
+        // for Your Notes; a D1-only change would leave a revoked user with live
+        // Firestore access if the browser mirror write failed.
+        let firestoreMirrored = false;
+        const admin = initializeFirebaseAdmin(env);
+        if (admin) {
+          const mirror = {};
+          for (const app of target) {
+            mirror[app === "pip" ? "pipStatus" : "notesStatus"] = action === "approve" ? "active" : "revoked";
+          }
+          await admin.firestore.doc(`applicationPermissions/${uid}`).set(mirror, { merge: true });
+          firestoreMirrored = true;
+        }
         const updated = await env.DB.prepare("SELECT status, pip_status AS pipStatus, notes_status AS notesStatus FROM registered_users WHERE uid = ?").bind(uid).first();
-        return new Response(JSON.stringify({ success: true, uid, target, action, status: action === "approve" ? "active" : "revoked", accountStatus: updated?.status || null, pipStatus: updated?.pipStatus || null, notesStatus: updated?.notesStatus || null }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        return new Response(JSON.stringify({ success: true, uid, target, action, status: action === "approve" ? "active" : "revoked", accountStatus: updated?.status || null, pipStatus: updated?.pipStatus || null, notesStatus: updated?.notesStatus || null, firestoreMirrored }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       } catch (_) {
         return new Response(JSON.stringify({ error: "Permission update unavailable" }), { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
@@ -509,7 +554,7 @@ export default {
     if (url.pathname === "/api/admin/users" && request.method === "GET") {
       try {
         const identity = await readIdentity();
-        if (!identity || identity.sub !== OWNER_UID || identity.email_verified !== true) {
+        if (!identity || !await isActiveAdmin(request, identity, env)) {
           return new Response(JSON.stringify({ error: "Administrator access denied" }), { status: identity ? 403 : 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         }
         const result = await env.DB.prepare(`SELECT uid, display_name AS displayName, status, pip_status AS pipStatus, notes_status AS notesStatus, registered_at AS registeredAt
@@ -526,8 +571,8 @@ export default {
     if (url.pathname === "/api/admin/accounts" && request.method === "GET") {
       try {
         const identity = await readIdentity();
-        if (!identity || identity.sub !== OWNER_UID || identity.email_verified !== true) {
-          return new Response(JSON.stringify({ error: "Owner access required" }), { status: identity ? 403 : 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        if (!identity || !await isActiveAdmin(request, identity, env)) {
+          return new Response(JSON.stringify({ error: "Owner or active administrator access required" }), { status: identity ? 403 : 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         }
         const result = await env.DB.prepare(`SELECT uid, display_name AS displayName, status, pip_status AS pipStatus, notes_status AS notesStatus, registered_at AS registeredAt, deletion_at AS deletionAt
           FROM registered_users ORDER BY display_name COLLATE NOCASE, uid LIMIT 500`).all();
@@ -541,11 +586,16 @@ export default {
     if (gzAccountPathMatch && request.method === "POST" && gzAccountPathMatch[2]) {
       try {
         const identity = await readIdentity();
-        if (!identity || identity.sub !== OWNER_UID || identity.email_verified !== true) {
-          return new Response(JSON.stringify({ error: "Owner access required" }), { status: identity ? 403 : 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-        }
         const uid = gzAccountPathMatch[1];
         const action = gzAccountPathMatch[2];
+        // Deletion is destructive and stays owner-only; suspension/reactivation
+        // and approvals are available to active owner-delegated administrators.
+        const authorized = action === "delete"
+          ? isOwnerIdentity(identity)
+          : Boolean(identity) && await isActiveAdmin(request, identity, env);
+        if (!authorized) {
+          return new Response(JSON.stringify({ error: action === "delete" ? "Owner access required" : "Owner or active administrator access required" }), { status: identity ? 403 : 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
         if (uid === OWNER_UID && (action === "suspend" || action === "delete")) {
           return new Response(JSON.stringify({ error: "The immutable owner account cannot be suspended or deleted" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         }
@@ -554,11 +604,13 @@ export default {
           return new Response(JSON.stringify({ error: "Account not found" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         }
         if (action === "suspend") {
-          // Suspension is signalled only by account status. Application statuses remain
-          // untouched so reactivation cannot grant permissions the owner never gave.
           await env.DB.prepare("UPDATE registered_users SET status = 'scheduled', deletion_at = NULL WHERE uid = ?").bind(uid).run();
         } else if (action === "reactivate") {
-          await env.DB.prepare("UPDATE registered_users SET status = 'active', deletion_at = NULL WHERE uid = ?").bind(uid).run();
+          // Ground Zero contract (Flint): reactivation is an explicit owner/admin
+          // action that restores account AND application access. This is only
+          // reachable through backend-verified owner/admin authorization; the
+          // self-service cancellation path never performs this promotion.
+          await env.DB.prepare("UPDATE registered_users SET status = 'active', pip_status = 'active', notes_status = 'active', deletion_at = NULL WHERE uid = ?").bind(uid).run();
         } else if (action === "delete") {
           const admin = initializeFirebaseAdmin(env);
           if (!admin) {

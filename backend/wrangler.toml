@@ -16,3 +16,9 @@ binding = "DB"
 database_name = "fj-api-state"
 database_id = "3f4828b7-8c5f-4725-b801-3d2bea416312"
 migrations_dir = "migrations"
+
+# Public Firebase Web API key (already published in firebase-config.js; not a
+# secret and not billable). The Worker uses it only to verify delegated Ground
+# Zero administrator status through Firestore's self-read security rule.
+[vars]
+FIREBASE_WEB_API_KEY = "AIzaSyD17U-rz-QefHSQ85EWj09O1vMQRsbZGcE"

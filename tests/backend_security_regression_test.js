@@ -3,7 +3,8 @@
  *
  * Covers authorization boundaries that must hold even when a caller controls
  * request bodies and account lifecycle state:
- *  - owner revocation cannot be undone by schedule/cancel or suspend/reactivate
+ *  - self-service cancellation cannot restore revoked permissions
+ *  - owner-delegated admins are backend-verified and immediately revocable
  *  - owner account cannot be suspended or deleted from the owner panel
  *  - account deletion must fail closed without a trusted Firebase Admin SDK
  *  - every PIP data-mutation route requires an active PIP account
@@ -24,6 +25,10 @@ const TEST_PRIVATE_KEY = fs.readFileSync(path.join(__dirname, 'fixtures', 'worke
 const OWNER_UID = 'hDbzbNTC7pOuU2UFCjFksopbgaG3';
 const PROJECT_ID = 'fj-website-384fd';
 const SECRET = 'test-only-hmac-secret-with-at-least-32-characters';
+const WEB_API_KEY = 'test-only-public-web-api-key';
+
+// Controlled Firestore admin-doc response for backend authorization checks.
+let firestoreAdminDoc = null;
 
 function jwt(payload) {
   const header = Buffer.from(JSON.stringify({ alg: 'RS256', typ: 'JWT', kid: TEST_KID })).toString('base64url');
@@ -47,7 +52,7 @@ function claims(overrides = {}) {
 
 const ownerToken = jwt(claims({ email: 'faissalness@gmail.com', email_verified: true, name: 'Owner' }));
 
-function harness(seed = {}) {
+function harness(seed = {}, envExtras = {}) {
   const db = new FakeD1();
   for (const [uid, values] of Object.entries(seed)) {
     db.users.set(uid, {
@@ -61,7 +66,7 @@ function harness(seed = {}) {
     });
   }
   const impl = harness.implementation;
-  const env = { DB: db, PAL_LOOKUP_SECRET: SECRET };
+  const env = { DB: db, PAL_LOOKUP_SECRET: SECRET, ...envExtras };
   const call = (token, url, method = 'GET', body) => impl.fetch(new Request(`https://api.local${url}`, {
     method,
     headers: {
@@ -90,6 +95,13 @@ function check(name, condition) {
         headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=300' }
       });
     }
+    if (String(input).startsWith(`https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents/admins/`)) {
+      if (!firestoreAdminDoc) return new Response(JSON.stringify({ error: 'NOT_FOUND' }), { status: 404 });
+      if (firestoreAdminDoc.forbidden) return new Response(JSON.stringify({ error: 'PERMISSION_DENIED' }), { status: 403 });
+      const fields = {};
+      if (firestoreAdminDoc.active !== undefined) fields.active = { booleanValue: firestoreAdminDoc.active };
+      return new Response(JSON.stringify({ fields }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
     return originalFetch(input, init);
   };
   const module = await import('../backend/worker.js');
@@ -108,14 +120,15 @@ function check(name, condition) {
     check('cancelling deletion does NOT re-enable revoked Notes', db.users.get('revoked_user').notesStatus === 'revoked');
   }
 
-  // 2. Owner suspension/reactivation must not grant applications that were never approved.
-  console.log('\n2. Owner suspend/reactivate is non-clobbering');
+  // 2. Owner/admin reactivation follows the documented Ground Zero contract.
+  console.log('\n2. Owner reactivation restores applications by explicit backend action');
   {
     const { db, call } = harness({ pending_user: { status: 'active', pipStatus: 'pending', notesStatus: 'pending' } });
     check('owner can suspend', (await call(ownerToken, '/api/admin/accounts/pending_user/suspend', 'POST', {})).status === 200);
+    check('suspension does not silently approve applications', db.users.get('pending_user').pipStatus === 'pending');
     check('owner can reactivate', (await call(ownerToken, '/api/admin/accounts/pending_user/reactivate', 'POST', {})).status === 200);
-    check('reactivation does not approve PIP', db.users.get('pending_user').pipStatus === 'pending');
-    check('reactivation does not approve Notes', db.users.get('pending_user').notesStatus === 'pending');
+    check('explicit reactivation restores PIP (Flint contract)', db.users.get('pending_user').pipStatus === 'active');
+    check('explicit reactivation restores Notes (Flint contract)', db.users.get('pending_user').notesStatus === 'active');
   }
 
   // 3. Immutable owner account is protected from the owner panel.
@@ -186,8 +199,51 @@ function check(name, condition) {
     check('owner passes the active-account gate without a D1 record', (await call(ownerToken, '/api/profiles')).status === 200);
   }
 
-  // 10. No endpoint may report queued work it did not perform.
-  console.log('\n10. No fake asynchronous success responses');
+  // 10. Backend-verified Ground Zero administrators (Flint contract).
+  console.log('\n10. Ground Zero administrators are verified in the backend');
+  {
+    const adminToken = jwt(claims({ sub: 'active_admin', email: 'admin@example.com', email_verified: true }));
+    const { db, call } = harness({ target_user: { status: 'active', pipStatus: 'pending', notesStatus: 'pending' } }, { FIREBASE_WEB_API_KEY: WEB_API_KEY });
+    try {
+      firestoreAdminDoc = { active: true };
+      check('active admin can list accounts', (await call(adminToken, '/api/admin/accounts')).status === 200);
+      check('active admin can list approval users', (await call(adminToken, '/api/admin/users')).status === 200);
+      check('active admin can approve applications', (await call(adminToken, '/api/admin/permissions', 'POST', { uid: 'target_user', target: 'pip', action: 'approve' })).status === 200);
+      check('active admin approval is persisted in D1', db.users.get('target_user').pipStatus === 'active');
+      check('active admin can suspend an account', (await call(adminToken, '/api/admin/accounts/target_user/suspend', 'POST', {})).status === 200);
+      check('active admin cannot delete an account', (await call(adminToken, '/api/admin/accounts/target_user/delete', 'POST', {})).status === 403);
+      check('active admin cannot use the owner-only email lookup', (await call(adminToken, '/api/admin/lookup', 'POST', { email: 'user@example.com' })).status === 403);
+
+      firestoreAdminDoc = { active: false };
+      check('deactivated admin loses access immediately (no caching)', (await call(adminToken, '/api/admin/accounts')).status === 403);
+      firestoreAdminDoc = { forbidden: true };
+      check('a Firestore permission error is not treated as admin access', (await call(adminToken, '/api/admin/accounts')).status === 403);
+      firestoreAdminDoc = null;
+      check('missing admin document denies access', (await call(adminToken, '/api/admin/accounts')).status === 403);
+
+      firestoreAdminDoc = { active: true };
+      const unverifiedAdmin = jwt(claims({ sub: 'active_admin', email: 'admin@example.com', email_verified: false }));
+      check('unverified admin identity is denied', (await call(unverifiedAdmin, '/api/admin/accounts')).status === 403);
+      const noKey = harness({}, {});
+      check('admin checks fail closed when no web API key is configured', (await noKey.call(adminToken, '/api/admin/accounts')).status === 403);
+    } finally {
+      firestoreAdminDoc = null;
+    }
+  }
+
+  // 11. Permission-state consistency between D1 and Firestore.
+  console.log('\n11. Permission mirror state is reported honestly');
+  {
+    const { call } = harness({ target_user: { status: 'active', pipStatus: 'pending', notesStatus: 'pending' } });
+    const response = await call(ownerToken, '/api/admin/permissions', 'POST', { uid: 'target_user', target: 'both', action: 'approve' });
+    const body = await response.json();
+    check('approval succeeds without an Admin SDK', response.status === 200);
+    check('response reports that the Firestore mirror was not backend-written', body.firestoreMirrored === false);
+    check('D1 state is still updated', body.pipStatus === 'active' && body.notesStatus === 'active');
+  }
+
+  // 12. No endpoint may report queued work it did not perform.
+  console.log('\n12. No fake asynchronous success responses');
   {
     const { call } = harness();
     const response = await call(ownerToken, '/api/admin/notify-approval', 'POST', { email: 'user@example.com', action: 'approved' });
