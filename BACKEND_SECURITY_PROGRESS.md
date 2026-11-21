@@ -225,6 +225,27 @@ conditional investigation proceeded to the loaded page's authorization path.
 - Production note: this requires a Worker deployment (and the small frontend change
   requires Pages). Not deployed by me; integration director owns deployment.
 
+## Seventh pass — PIP + Notes 04 redirect (2026-11-21)
+
+- Root cause was identical to Ground Zero: `pip.js` initialized Firebase with the
+  named app `FJYourNotes`, while the main site, Notes, Meet and Gods use the shared
+  default app. Auth persistence is app-name scoped, so the restored session was
+  invisible and `onAuthStateChanged` saw `null` → `window.location.href="/"`.
+- Applied the same deterministic pattern as the working pages:
+  `initializeApp(firebaseConfig)` (default app), await `auth.authStateReady()` before
+  deciding, explicit ERROR state for technical failures, content hidden during
+  INITIALIZING, and `location.replace("/")` only after auth has genuinely settled.
+  Also fixed the approval poll to require `pipStatus === 'active'`, not just account
+  status, so pending users are not prematurely shown private UI.
+- Browser proof with a synthetic verified owner in the Auth emulator:
+  - old named-app script → `FINAL_URL=http://127.0.0.1:3123/` (redirected);
+  - fixed default-app script → `FINAL_URL=/pip/`, page rendered, and a Worker/API
+    failure was displayed as an error instead of causing a redirect.
+- Updated stale test expectations to the new deterministic contract; Ground Zero
+  suite 55 checks and website audit 42 checks pass. Full master suite 418/0.
+- Deployment: still requires integration (Pages only deploys from `main`). Not
+  deployed by me.
+
 ## Identity
 
 - Branch: `agent/hy4-20261121-002415`

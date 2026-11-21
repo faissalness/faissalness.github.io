@@ -101,8 +101,9 @@ assert.ok(!pipPage.includes('id="pip-login-form"') && !pipPage.includes('id="pip
   && !pipPage.includes('id="pip-returning"') && !pipScript.includes('signInWithEmailAndPassword')
   && !pipScript.includes('createUserWithEmailAndPassword') && !pipScript.includes('sendPasswordResetEmail'),
   'The separate PIP/Notes login screens must be removed; authentication happens on the main FJ website only');
-assert.ok(pipScript.includes('window.location.href = "/"') && pipScript.includes('onAuthStateChanged(auth, user'),
-  'PIP and Notes must redirect unauthenticated users back to the main FJ website');
+assert.ok(pipScript.includes('window.location.replace("/")') && pipScript.includes('auth.authStateReady()')
+  && pipScript.includes('const app = initializeApp(firebaseConfig);'),
+  'PIP must wait for auth settlement on the shared Firebase app and redirect unauthenticated users home');
 const indexHtml = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
 const groundZeroNavFirst = indexHtml.indexOf('id="gz-nav"') > -1 && indexHtml.indexOf('id="gz-nav"') < indexHtml.indexOf('href="/meet/"');
 assert.ok(groundZeroNavFirst && indexHtml.includes('Ground Zero 00'),

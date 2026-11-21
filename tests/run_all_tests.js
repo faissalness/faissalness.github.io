@@ -11,7 +11,7 @@ console.log("==========================================================\n");
 
 const suites = [
   { name: "Firestore Rules Logic Simulator (77 Cases)", cmd: "node tests/firestore_security_rules_test.js", expectedTests: 77 },
-  { name: "Ground Zero 00 Control Center Suite", cmd: "node tests/ground_zero_test.js", expectedTests: 52 },
+  { name: "Ground Zero 00 Control Center Suite", cmd: "node tests/ground_zero_test.js", expectedTests: 55 },
   { name: "Workflow and Access Trigger Security Suite", cmd: "node tests/workflow_test.js", expectedTests: 5 },
   { name: "Registration Suffix Authorization Regression", cmd: "node tests/auth_suffix_security_test.js", expectedTests: 4 },
   { name: "Notes Lock Gate & Persistent Access Suite", cmd: "node tests/notes_gate_test.js", expectedTests: 5 },

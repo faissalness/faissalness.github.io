@@ -180,7 +180,7 @@ test('three independent browser accounts verify email, persist sessions, and use
         await page.evaluate(async code => {
           const { getApps } = await import('https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js');
           const { applyActionCode, getAuth } = await import('https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js');
-          await applyActionCode(getAuth(getApps().find(app => app.name === 'FJYourNotes')), code);
+          await applyActionCode(getAuth(getApps()[0]), code);
         }, verificationCode);
         await page.locator('#pip-login-email').fill(account.email);
         await page.locator('#pip-login-password').fill('WrongPassword!');
@@ -192,7 +192,7 @@ test('three independent browser accounts verify email, persist sessions, and use
         await page.evaluate(async code => {
           const { getApps } = await import('https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js');
           const { applyActionCode, getAuth } = await import('https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js');
-          await applyActionCode(getAuth(getApps().find(app => app.name === 'FJYourNotes')), code);
+          await applyActionCode(getAuth(getApps()[0]), code);
         }, verificationCode);
         await page.locator('#pip-check-verified').click();
       }
@@ -201,7 +201,7 @@ test('three independent browser accounts verify email, persist sessions, and use
       const persistedUid = await page.evaluate(async () => {
         const { getApps } = await import('https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js');
         const { getAuth } = await import('https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js');
-        return getAuth(getApps().find(app => app.name === 'FJYourNotes')).currentUser.uid;
+        return getAuth(getApps()[0]).currentUser.uid;
       });
       expect(uids.has(persistedUid)).toBeFalsy();
       uids.add(persistedUid);
@@ -262,7 +262,7 @@ test('three independent browser accounts verify email, persist sessions, and use
       const resetEmail = await page.evaluate(async ({ code, password }) => {
         const { getApps } = await import('https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js');
         const { confirmPasswordReset, getAuth, verifyPasswordResetCode } = await import('https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js');
-        const auth = getAuth(getApps().find(app => app.name === 'FJYourNotes'));
+        const auth = getAuth(getApps()[0]);
         const email = await verifyPasswordResetCode(auth, code);
         await confirmPasswordReset(auth, code, password);
         return email;

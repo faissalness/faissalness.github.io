@@ -5,7 +5,10 @@ import { firebaseConfig } from "./firebase-config.js";
 import { decryptNotePayload, encryptNotePayload } from "./note-crypto.mjs";
 
 const $ = selector => document.querySelector(selector);
-const app = initializeApp(firebaseConfig, "FJYourNotes");
+// Use the shared default Firebase app instance. Auth persistence is scoped by
+// app name, so a named instance cannot see the owner/user session restored by
+// the main website (or by Notes and Meet/Gods). This was the redirect cause.
+const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 if (location.hostname === "127.0.0.1") {
@@ -805,7 +808,7 @@ async function showPrivateNotes(user) {
       pendingApprovalTimer = setInterval(() => {
         palApi("/api/users/register", { method: "POST", body: "{}" })
           .then(registrationResult => {
-            if (registrationResult.status === "active") {
+            if (registrationResult.status === "active" && registrationResult.pipStatus === "active") {
               stopPendingApprovalPoll();
               showPrivateNotes(user);
             }
@@ -850,12 +853,40 @@ async function showPrivateNotes(user) {
 }
 
 // PIP and Your Notes use the main FJ website session only — there is no
-// second login. Users sign in through the main website; unauthenticated
-// sessions are sent back there.
-onAuthStateChanged(auth, user => {
+// second login. Wait for the official auth-settlement signal before deciding,
+// never disguise a technical error as a signed-out state, and keep the page
+// hidden while INITIALIZING so it cannot flash before the decision.
+let pipAuthState = "INITIALIZING";
+
+function pipHideContent() {
+  $("#pip-auth").hidden = true;
+  $("#pip-notes").hidden = true;
+}
+
+function pipShowError(message) {
+  pipAuthState = "ERROR";
+  $("#pip-auth").hidden = false;
+  status(message, "error");
+}
+
+async function pipWaitForAuthSettled() {
+  try { await auth.authStateReady(); } catch (_) { /* listener already settled */ }
+}
+
+onAuthStateChanged(auth, async user => {
+  pipHideContent();
+  await pipWaitForAuthSettled();
   if (!user) {
-    window.location.href = "/";
+    // Auth has settled: there is genuinely no restored session on the shared app.
+    pipAuthState = "UNAUTHORIZED";
+    window.location.replace("/");
     return;
   }
-  showPrivateNotes(user);
-});
+  pipAuthState = "AUTHENTICATED";
+  try {
+    await showPrivateNotes(user);
+    pipAuthState = "AUTHORIZED";
+  } catch (error) {
+    pipShowError(error?.message || "PIP could not verify access. Please retry.");
+  }
+}, error => pipShowError(`PIP access check failed: ${error?.message || "unknown error"}`));
