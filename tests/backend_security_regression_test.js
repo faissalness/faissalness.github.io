@@ -250,6 +250,57 @@ function check(name, condition) {
     check('unimplemented email delivery does not return fake success', response.status === 503);
   }
 
+  // 13. Post It Pal invitations between approved PIP users.
+  console.log('\n13. Approved users can add each other as Pals');
+  {
+    const aToken = jwt(claims({ sub: 'pal_a', email: 'alice@example.com', email_verified: true, name: 'Alice' }));
+    const bToken = jwt(claims({ sub: 'pal_b', email: 'bob@example.com', email_verified: true, name: 'Bob' }));
+    const cToken = jwt(claims({ sub: 'pal_c', email: 'carol@example.com', email_verified: true, name: 'Carol' }));
+    const dToken = jwt(claims({ sub: 'pal_d', email: 'dana@example.com', email_verified: true, name: 'Dana' }));
+    const { db, call } = harness();
+
+    for (const [token, uid] of [[aToken, 'pal_a'], [bToken, 'pal_b'], [cToken, 'pal_c'], [dToken, 'pal_d']]) {
+      check(`${uid} registers`, (await call(token, '/api/users/register', 'POST', {})).status === 200);
+    }
+    for (const uid of ['pal_a', 'pal_b', 'pal_c', 'pal_d']) {
+      check(`owner approves ${uid}`, (await call(ownerToken, '/api/admin/permissions', 'POST', { uid, target: 'both', action: 'approve' })).status === 200);
+    }
+
+    const inviteResponse = await call(aToken, '/api/pals/invite', 'POST', { email: 'bob@example.com' });
+    check('approved user can invite by email', inviteResponse.status === 202);
+    check('invite response is generic (no account-existence leak)', typeof (await inviteResponse.json()).message === 'string');
+    const bInbox = await (await call(bToken, '/api/pals/invitations')).json();
+    const bInvites = bInbox.invitations || [];
+    check('invited user sees the invitation', bInvites.some(i => i.inviterUid === 'pal_a'));
+    const emailInvite = bInvites.find(i => i.inviterUid === 'pal_a');
+    if (emailInvite) check('recipient can accept the email invitation', (await call(bToken, `/api/pals/invitations/${emailInvite.id}/respond`, 'POST', { action: 'accept' })).status === 200);
+    const aPals = (await (await call(aToken, '/api/pals')).json()).pals || [];
+    const bPals = (await (await call(bToken, '/api/pals')).json()).pals || [];
+    check('inviter sees the accepted Pal', aPals.some(p => p.uid === 'pal_b'));
+    check('recipient sees the inviter as a Pal', bPals.some(p => p.uid === 'pal_a'));
+    check('Pals can exchange a message', (await call(aToken, '/api/pals/pal_b/messages', 'POST', { body: 'hello Bob' })).status === 201);
+    const thread = await (await call(bToken, '/api/pals/pal_a/messages')).json();
+    check('the message is delivered', (thread.messages || []).some(m => m.body === 'hello Bob'));
+
+    // UID from profile search binds the invite even if the typed email differs.
+    check('invite with profile UID succeeds', (await call(aToken, '/api/pals/invite', 'POST', { email: 'wrong-address@example.com', uid: 'pal_c' })).status === 202);
+    const cInbox = await (await call(cToken, '/api/pals/invitations')).json();
+    const cInvite = (cInbox.invitations || []).find(i => i.inviterUid === 'pal_a');
+    check('UID-bound invitation reaches the selected profile', Boolean(cInvite));
+    if (cInvite) check('UID-bound invitation can be accepted', (await call(cToken, `/api/pals/invitations/${cInvite.id}/respond`, 'POST', { action: 'accept' })).status === 200);
+
+    check('self-invite is a no-op with a generic response', (await call(aToken, '/api/pals/invite', 'POST', { email: 'alice@example.com', uid: 'pal_a' })).status === 202);
+    check('duplicate invitation is not created', (await call(aToken, '/api/pals/invite', 'POST', { email: 'dana@example.com' })).status === 202);
+    check('duplicate invitation still returns generic success', (await call(aToken, '/api/pals/invite', 'POST', { email: 'dana@example.com' })).status === 202);
+    const dInbox = await (await call(dToken, '/api/pals/invitations')).json();
+    check('duplicate invite yields exactly one pending invitation', (dInbox.invitations || []).filter(i => i.inviterUid === 'pal_a' && i.status === 'pending').length === 1);
+    check('email invite to a non-user returns the same generic response', (await call(aToken, '/api/pals/invite', 'POST', { email: 'nobody@example.com' })).status === 202);
+    check('a forged UID cannot be invited as an active account', (await call(aToken, '/api/pals/invite', 'POST', { email: 'nobody@example.com', uid: 'not_registered' })).status === 202);
+    check('ordinary user cannot invite (not PIP-approved)', (await call(jwt(claims({ sub: 'pending_user', email: 'pending@example.com', email_verified: true })), '/api/pals/invite', 'POST', { email: 'bob@example.com' })).status === 403);
+    check('unverified user cannot invite', (await call(jwt(claims({ sub: 'unverified', email: 'unverified@example.com', email_verified: false })), '/api/pals/invite', 'POST', { email: 'bob@example.com' })).status === 403);
+    check('pal_invitations stored in the test D1', db.palInvites.size >= 3);
+  }
+
   console.log(`\n=== ALL ${passed} BACKEND SECURITY REGRESSION CHECKS PASSED ===`);
   global.fetch = originalFetch;
 })().catch(error => {

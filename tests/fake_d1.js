@@ -44,9 +44,25 @@ class FakeD1 {
           const user = db.users.get(args[0]);
           return user ? { status: user.status, pipStatus: user.pipStatus || "pending" } : null;
         }
+        if (sql.includes("SELECT id FROM pal_invitations WHERE inviter_uid = ?")) {
+          const found = [...db.palInvites.values()].find(item => item.inviterUid === args[0]
+            && item.status === "pending"
+            && (item.emailDigest === args[1] || (args[2] && item.recipientUid === args[2])));
+          return found ? { id: found.id } : null;
+        }
+        if (sql.includes("SELECT uid, pip_status AS pipStatus FROM registered_users WHERE email_digest = ?")) {
+          const user = [...db.users.values()].find(item => item.emailDigest && item.emailDigest === args[0]);
+          return user ? { uid: user.uid, pipStatus: user.pipStatus || "pending" } : null;
+        }
+        if (sql.includes("SELECT pip_status AS pipStatus FROM registered_users WHERE uid = ?")) {
+          const user = db.users.get(args[0]);
+          return user ? { pipStatus: user.pipStatus || "pending" } : null;
+        }
         if (sql.includes("SELECT id, inviter_uid AS inviterUid FROM pal_invitations")) {
           const item = db.palInvites.get(args[0]);
-          return item && item.emailDigest === args[1] && item.status === "pending" ? { id: item.id, inviterUid: item.inviterUid } : null;
+          if (!item || item.status !== "pending") return null;
+          const allowed = item.emailDigest === args[1] || (args[2] && item.recipientUid === args[2]);
+          return allowed ? { id: item.id, inviterUid: item.inviterUid } : null;
         }
         if (sql.includes("UPDATE pal_invitations") && sql.includes("RETURNING id")) {
           const [status, recipientUid, id] = args;
@@ -86,9 +102,10 @@ class FakeD1 {
       },
       async run() {
         if (sql.includes("INSERT OR IGNORE INTO registered_users")) {
-          if (!db.users.has(args[0])) db.users.set(args[0], { uid: args[0], registeredAt: args[1], displayName: args[2], status: args[4] ?? "active", pipStatus: args[5] ?? "pending", notesStatus: args[6] ?? "pending", deletionAt: null });
+          if (!db.users.has(args[0])) db.users.set(args[0], { uid: args[0], registeredAt: args[1], displayName: args[2], emailDigest: args[3] || "", status: args[4] ?? "active", pipStatus: args[5] ?? "pending", notesStatus: args[6] ?? "pending", deletionAt: null });
         } else if (sql.includes("UPDATE registered_users SET display_name")) {
-          const user = db.users.get(args[1]); if (user) user.displayName = args[0];
+          const user = db.users.get(args[2]);
+          if (user) { user.displayName = args[0]; user.emailDigest = args[1]; }
         } else if (sql.includes("UPDATE registered_users SET status = 'active', pip_status = 'active'")) {
           const user = db.users.get(args[0]);
           if (user) { user.status = "active"; user.pipStatus = "active"; user.notesStatus = "active"; user.deletionAt = null; }
@@ -138,8 +155,8 @@ class FakeD1 {
           const user = db.users.get(args[0]);
           if (user) { user.status = "active"; user.deletionAt = null; }
         } else if (sql.includes("INSERT INTO pal_invitations")) {
-          const [id, emailDigest, inviterUid, inviterName, createdAt] = args;
-          db.palInvites.set(id, { id, emailDigest, inviterUid, inviterName, status: "pending", createdAt, recipientUid: null });
+          const [id, emailDigest, recipientUid, inviterUid, inviterName, createdAt] = args;
+          db.palInvites.set(id, { id, emailDigest, recipientUid: recipientUid || null, inviterUid, inviterName, status: "pending", createdAt });
         } else if (sql.includes("INSERT OR IGNORE INTO pals")) {
           db.pals.add(`${args[0]}|${args[1]}`);
         } else if (sql.includes("INSERT INTO pip_messages")) {
@@ -185,8 +202,11 @@ class FakeD1 {
           })).sort((a, b) => String(a.displayName || "").toLowerCase().localeCompare(String(b.displayName || "").toLowerCase())) };
         }
         if (sql.includes("FROM pal_invitations")) {
-          const [sender, senderMatch, emailDigest] = args;
-          return { results: [...db.palInvites.values()].filter(item => item.status === "pending" && (item.inviterUid === senderMatch || item.emailDigest === emailDigest)).map(item => ({ id: item.id, inviterUid: item.inviterUid, inviterName: item.inviterName, status: item.status, createdAt: item.createdAt, direction: item.inviterUid === sender ? "sent" : "received" })) };
+          const [sender, senderMatch, emailDigest, recipientUid] = args;
+          return { results: [...db.palInvites.values()].filter(item =>
+            (item.inviterUid === senderMatch && (item.status === "pending" || item.status === "accepted"))
+            || ((item.emailDigest === emailDigest || (recipientUid && item.recipientUid === recipientUid)) && item.status === "pending")
+          ).map(item => ({ id: item.id, inviterUid: item.inviterUid, inviterName: item.inviterName, status: item.status, createdAt: item.createdAt, direction: item.inviterUid === sender ? "sent" : "received" })) };
         }
         if (sql.includes("FROM pals p JOIN registered_users")) {
           const uid = args[0];

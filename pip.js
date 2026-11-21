@@ -391,7 +391,9 @@ $("#pip-profile-search").addEventListener("submit", async event => {
       row.append(createProfileAvatar(profile.uid, profile.displayName));
       addTextNode(row, profile.displayName || "PIP profile", "pip-note-row-title");
       row.addEventListener("click", async () => {
-        status(`${profile.displayName || "Profile"} selected. Ask for their PIP email to send an invitation.`, "info");
+        $("#pip-pal-uid").value = profile.uid || "";
+        $("#pip-pal-email").focus();
+        status(`${profile.displayName || "Profile"} selected. Enter their PIP email to send the invitation.`, "info");
       });
       results.append(row);
     }
@@ -404,7 +406,8 @@ $("#pip-pal-invite-form").addEventListener("submit", async event => {
   button.disabled = true;
   try {
     const email = $("#pip-pal-email").value.trim();
-    const result = await palApi("/api/pals/invite", { method: "POST", body: JSON.stringify({ email }) });
+    const uid = $("#pip-pal-uid").value.trim();
+    const result = await palApi("/api/pals/invite", { method: "POST", body: JSON.stringify({ email, uid }) });
     status(result.message, "success");
     event.currentTarget.reset();
     await refreshPalExperience();

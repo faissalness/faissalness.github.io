@@ -21,7 +21,7 @@ const suites = [
   { name: "Full Website & Asset Audit Suite", cmd: "node tests/website_audit_test.js", expectedTests: 42 },
   { name: "Human Verification and Reload Regression Checks", cmd: "node tests/human_verification_test.js", expectedTests: 6 },
   { name: "Cloudflare Worker Backend Security Suite", cmd: "node tests/worker_backend_test.js", expectedTests: 76 },
-  { name: "Backend Authorization & Lifecycle Regression Suite", cmd: "node tests/backend_security_regression_test.js", expectedTests: 40 },
+  { name: "Backend Authorization & Lifecycle Regression Suite", cmd: "node tests/backend_security_regression_test.js", expectedTests: 68 },
   { name: "Comprehensive Python QR Independent Decoding (10 Variants)", cmd: "python tests/qr_comprehensive_test.py", expectedTests: 10 },
   { name: "Baseline Python QR Independent Verification", cmd: "python tests/qr_verification.py", expectedTests: 1 },
   { name: "GitHub Pages Public Artifact Allowlist", cmd: "node tests/pages_allowlist_test.js", expectedTests: 7 },

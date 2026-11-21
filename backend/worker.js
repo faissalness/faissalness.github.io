@@ -801,16 +801,35 @@ export default {
         const body = await request.json();
         const email = String(body.email || "").trim().toLowerCase();
         if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return new Response(JSON.stringify({ error: "Enter a valid email address" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        const requestedUid = typeof body.uid === "string" && /^[A-Za-z0-9_-]{1,128}$/.test(body.uid) ? body.uid : "";
         const emailDigest = await emailLookupDigest(email, env.PAL_LOOKUP_SECRET);
         const ownDigest = typeof identity.email === "string" ? await emailLookupDigest(identity.email.trim().toLowerCase(), env.PAL_LOOKUP_SECRET) : "";
-        if (emailDigest !== ownDigest) {
-          const recent = await env.DB.prepare("SELECT COUNT(*) AS count FROM pal_invitations WHERE inviter_uid = ? AND created_at > ?").bind(identity.sub, Date.now() - 86400000).first();
-          if (Number(recent?.count || 0) >= 30) return new Response(JSON.stringify({ error: "Invitation limit reached. Try again tomorrow." }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-          const invitationId = bufferToHex(crypto.getRandomValues(new Uint8Array(16)));
-          await env.DB.prepare("INSERT INTO pal_invitations (id, email_digest, inviter_uid, inviter_name, status, created_at) VALUES (?, ?, ?, ?, 'pending', ?)")
-            .bind(invitationId, emailDigest, identity.sub, String(identity.name || "").slice(0, 80), Date.now()).run();
+        const generic = () => new Response(JSON.stringify({ success: true, message: "If that address uses PIP, the invitation will appear in the recipient's inbox." }), { status: 202, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        if (emailDigest === ownDigest || requestedUid === identity.sub) return generic();
+
+        // Bind the invitation to a concrete PIP account whenever possible. The
+        // profile-search result supplies a UID; otherwise the privacy-preserving
+        // email digest identifies the account. A UID-scoped invitation is delivered
+        // even if the recipient's token email later changes or is normalised
+        // differently, so an approved pair can always add each other.
+        let recipientUid = "";
+        if (requestedUid) {
+          const target = await env.DB.prepare("SELECT pip_status AS pipStatus FROM registered_users WHERE uid = ?").bind(requestedUid).first();
+          if (target && (target.pipStatus === "active" || target.pipStatus === "approved")) recipientUid = requestedUid;
+        } else {
+          const target = await env.DB.prepare("SELECT uid, pip_status AS pipStatus FROM registered_users WHERE email_digest = ? LIMIT 1").bind(emailDigest).first();
+          if (target && (target.pipStatus === "active" || target.pipStatus === "approved")) recipientUid = target.uid;
         }
-        return new Response(JSON.stringify({ success: true, message: "If that address uses PIP, the invitation will appear in its inbox." }), { status: 202, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
+        const duplicate = await env.DB.prepare("SELECT id FROM pal_invitations WHERE inviter_uid = ? AND status = 'pending' AND (email_digest = ? OR recipient_uid = ?) LIMIT 1")
+          .bind(identity.sub, emailDigest, recipientUid || "\u0000").first();
+        if (duplicate) return generic();
+        const recent = await env.DB.prepare("SELECT COUNT(*) AS count FROM pal_invitations WHERE inviter_uid = ? AND created_at > ?").bind(identity.sub, Date.now() - 86400000).first();
+        if (Number(recent?.count || 0) >= 30) return new Response(JSON.stringify({ error: "Invitation limit reached. Try again tomorrow." }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        const invitationId = bufferToHex(crypto.getRandomValues(new Uint8Array(16)));
+        await env.DB.prepare("INSERT INTO pal_invitations (id, email_digest, recipient_uid, inviter_uid, inviter_name, status, created_at) VALUES (?, ?, ?, ?, ?, 'pending', ?)")
+          .bind(invitationId, emailDigest, recipientUid || null, identity.sub, cleanDisplayName(identity.name), Date.now()).run();
+        return generic();
       } catch (_) {
         return new Response(JSON.stringify({ error: "Invitation could not be sent" }), { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
@@ -825,8 +844,9 @@ export default {
         const emailDigest = identity.email_verified === true && typeof identity.email === "string" ? await emailLookupDigest(identity.email.trim().toLowerCase(), env.PAL_LOOKUP_SECRET) : "";
         const result = await env.DB.prepare(`SELECT id, inviter_uid AS inviterUid, inviter_name AS inviterName, recipient_uid AS recipientUid, status, created_at AS createdAt,
           CASE WHEN inviter_uid = ? THEN 'sent' ELSE 'received' END AS direction
-          FROM pal_invitations WHERE (inviter_uid = ? AND status IN ('pending', 'accepted')) OR (email_digest = ? AND status = 'pending')
-          ORDER BY created_at DESC LIMIT 100`).bind(identity.sub, identity.sub, emailDigest).all();
+          FROM pal_invitations WHERE (inviter_uid = ? AND status IN ('pending', 'accepted'))
+            OR ((email_digest = ? OR recipient_uid = ?) AND status = 'pending')
+          ORDER BY created_at DESC LIMIT 100`).bind(identity.sub, identity.sub, emailDigest, identity.sub).all();
         return new Response(JSON.stringify({ invitations: result.results || [] }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       } catch (_) {
         return new Response(JSON.stringify({ error: "Invitations unavailable" }), { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -844,8 +864,8 @@ export default {
         const action = body.action;
         if (!['accept', 'decline'].includes(action)) return new Response(JSON.stringify({ error: "Invalid response" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         const emailDigest = await emailLookupDigest(identity.email.trim().toLowerCase(), env.PAL_LOOKUP_SECRET);
-        const invite = await env.DB.prepare("SELECT id, inviter_uid AS inviterUid FROM pal_invitations WHERE id = ? AND email_digest = ? AND status = 'pending'")
-          .bind(inviteResponseMatch[1], emailDigest).first();
+        const invite = await env.DB.prepare("SELECT id, inviter_uid AS inviterUid FROM pal_invitations WHERE id = ? AND (email_digest = ? OR recipient_uid = ?) AND status = 'pending'")
+          .bind(inviteResponseMatch[1], emailDigest, identity.sub).first();
         if (!invite || invite.inviterUid === identity.sub) return new Response(JSON.stringify({ error: "Invitation unavailable" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         const updated = await env.DB.prepare("UPDATE pal_invitations SET status = ?, recipient_uid = ? WHERE id = ? AND status = 'pending' RETURNING id")
           .bind(action === 'accept' ? 'accepted' : 'declined', identity.sub, invite.id).first();

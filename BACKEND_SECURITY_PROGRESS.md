@@ -198,6 +198,33 @@ conditional investigation proceeded to the loaded page's authorization path.
   exact steps are in `BACKEND_CONTRACT_HANDOFF.md`. No production system was changed
   by me.
 
+## Sixth pass — Post It Pal "add by email" (2026-11-21)
+
+- Traced the full invite → inbox → accept → pals → message flow through `pip.js` and
+  `backend/worker.js`. The flow was only deliverable via an email-digest match at
+  read time; there was no binding to a concrete recipient account.
+- Worker hardening/completion:
+  - `/api/pals/invite` now resolves the invited account (explicit profile UID from
+    search, or `registered_users.email_digest`) and stores `recipient_uid`, so an
+    invitation reaches the intended approved account even if the email string is
+    normalised differently later. Unknown emails still receive the same generic
+    response, preserving privacy.
+  - duplicate pending invitations are suppressed; self-invites are a no-op; the
+    inviter name is sanitised.
+  - `/api/pals/invitations` and `/api/pals/invitations/{id}/respond` now accept a
+    recipient by UID **or** digest; accepted invitations remain visible to inviters.
+- Frontend (minimal, no design change): selecting a PIP profile stores its UID in a
+  hidden field and the invite submits `{ email, uid }`; the email field remains the
+  primary input as requested.
+- Test double corrected to persist `email_digest`, apply display-name updates to the
+  right UID, and emulate the new recipient-bound invitation queries.
+- Tests: 28 new end-to-end PAL assertions (two approved users invite by email, accept,
+  appear as Pals, exchange a message; UID-bound invite; duplicates; self-invite;
+  ordinary/unverified rejection). Backend regression suite 68/68; full master suite
+  415 passed / 0 failed.
+- Production note: this requires a Worker deployment (and the small frontend change
+  requires Pages). Not deployed by me; integration director owns deployment.
+
 ## Identity
 
 - Branch: `agent/hy4-20261121-002415`
