@@ -155,7 +155,17 @@ assert.ok(pipScript.includes('/api/pals/invite') && pipScript.includes('/api/pal
   'Post It Pal requests must use authenticated backend routes and render user content as text');
 assert.ok(fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8').includes('id="public-user-count"') && fs.readFileSync(path.join(ROOT, 'app.js'), 'utf8').includes('/api/users/count'),
   'The public homepage must request only the aggregate registered-account count');
-passedAudits += 3;
+assert.ok(pipPage.includes('id="pip-pal-invite-form"') && pipPage.includes('id="pip-pal-email"') && pipPage.includes('Invite a Pal by email'),
+  'PIP + Notes must expose the +Pal invite field where an approved user enters a pal email');
+assert.ok(pipScript.includes('palApi("/api/pals/invite"') && pipScript.includes('palApi(`/api/pals/${encodeURIComponent(pal.uid)}`, { method: "DELETE" })'),
+  'PIP + Notes must support adding and removing pals through the authenticated backend pal routes');
+assert.ok(pipScript.includes('/api/pals/invitations/${encodeURIComponent(invitation.id)}/respond') && pipScript.includes('action === "accept"'),
+  'PIP + Notes Pal invitations must support accept/decline responses through the authenticated backend');
+assert.ok(pipScript.includes('openPalConversation(pal)') && pipScript.includes('pal.uid === selectedPalUid'),
+  'PIP + Notes Pal list must allow choosing a pal and opening the Post It conversation');
+assert.ok(pipScript.includes('/api/pals/${encodeURIComponent(selectedPalUid)}/messages') && pipPage.includes('placeholder="Write a Post It'),
+  'PIP + Notes Pal conversations must send sticky-note Post It messages with reply support');
+passedAudits += 7;
 const noteCrypto = fs.readFileSync(path.join(ROOT, 'note-crypto.mjs'), 'utf8');
 assert.ok(pipPage.includes('pip-note-protected') && pipPage.includes('pip-note-unlock') && pipScript.includes('encryptNotePayload') && pipScript.includes('decryptNotePayload'),
   'Your Notes must provide a separate unlock flow for encrypted individual notes');

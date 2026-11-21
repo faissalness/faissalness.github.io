@@ -405,3 +405,16 @@ This is the newest status and supersedes earlier statements above where they con
 - **Fix applied**: switched `pip.js` to the shared default instance (`const app = initializeApp(firebaseConfig);`). Same proven defect class as the Ground Zero `FJGroundZero` fix.
 - **Regression coverage**: added check that PIP + Notes use the shared default Firebase app instance (no custom name); Ground Zero suite now 53 checks; full master suite 345 passed / 0 failed.
 
+
+### Post It Pal (+Pal) flow verification - 2026-11-21 (FLINT - CONTINUE EXISTING WORK)
+
+- **Instruction received**: implement a function coordinating with agent Hy4 free where PIP + Notes 04 approved users can add each other as pals by searching each other's emails on the +pal field and receive notification they were added, accept or reject and if accepted both are pals and are added into each other's pal list, and from pal list they can choose a pal and on the right the pal's note open where they can send sticky note message by typing in a note in it and the n hit "pip" to send and the other pal should receive and be able to do the same i.e. reply or send new pip. Owner: "+pal function does not work currently; do not stop until it is verified and deployed".
+- **Code audit findings**: the +Pal feature itself (invite by email via `POST /api/pals/invite`, invitation inbox + accept/decline via `GET /api/pals/invitations` / `POST /api/pals/invitations/{id}/respond`, symmetric pal pair insert on accept, pal list via `GET /api/pals`, sticky-note Post It messaging via `GET/POST /api/pals/{uid}/messages`) was already implemented on the Worker backend and covered by `tests/worker_backend_test.js` (76 checks, incl. invitation acceptance, pal visibility, message isolation, rate limits).
+- **Critical live blocker found and fixed this round**: `pip.js` initialized a Firebase app with a custom name (`FJYourNotes`), so the PIP + Notes 04 page (including the +Pal field, pal list, invitations, and Post It conversations) never saw the persisted session and redirected after re-login. Fixed to the shared default instance (`const app = initializeApp(firebaseConfig);`). Same defect class as the Ground Zero `FJGroundZero` fix. Regression checks added (Ground Zero suite now 53 checks; master suite green).
+- **Regression coverage added this round**: website audit suite now asserts the +Pal invite field (`id="pip-pal-email"`, "+Pal" invite), authenticated pal add/remove routes, invitation accept/decline routes, pal list -> conversation selection, and sticky-note Post It send/reply routes.
+
+- **Tests**: `node tests/run_all_tests.js` -> **349 passed, 0 failed** (15/15 suites; Website Audit now 45 checks, Ground Zero 53, Worker Backend 76, Pages allowlist 8/8).
+
+- **Deploy**: Flint branch commit pending push; production deploy still gated by GitHub environment protection (branch `agent/flint-20261121-002415` not allowed to deploy to `github-pages`). Live site currently serves `main@0a68d53` which still carries the pre-fix named Firebase instances.
+
+- **Keep unresolved**: Ground Zero must remain FAILED until production navigation and actual authorized access are verified (deploy of the Flint fixes still pending release).
