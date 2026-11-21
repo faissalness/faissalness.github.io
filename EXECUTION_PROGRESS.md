@@ -330,3 +330,20 @@ This is the newest status and supersedes earlier statements above where they con
 - **Fix applied on Flint branch (this session)**: kept the shared default Firebase app instance, deterministic settlement/error handling and deactivated-admin denial; adopted content suppression (`gzDisplayLoading` hides `.gz-hero`/`.gz-page`, `gzShowContent` reveals after authorization) to complete the flash fix without weakening authz.
 - **Tests**: `tests/ground_zero_test.js` extended to **47 checks** (incl. content-suppression check); full master suite: **338 passed, 0 failed** (15/15 suites).
 - **Deployed**: not deployed by this agent; integration director handles the production release.
+
+### DeepSeek integration instructions — 2026-11-21 (Flint handoff)
+
+### DeepSeek integration instructions - 2026-11-21 (Flint handoff)
+
+- **Objective**: make `https://faissalness.github.io/ground-zero/` reliable for the owner and authorized admins; stop the owner redirect loop/flash.
+- **Proven root cause (final)**: Ground Zero page initialized Firebase with custom app name `FJGroundZero`; Firebase auth persistence is app-name scoped, so the persisted owner session (created via the default app on the main site) was invisible; settled state -> signed-out -> `redirectHome()` to `/`. Deployed artifact at `https://faissalness.github.io/ground-zero.js` still contained this; prior fixes on parallel branches never deployed.
+- **Required integration state (union of coordinated fixes)**:
+  1. `ground-zero.js` MUST use the shared default Firebase app instance (`initializeApp(firebaseConfig)`).
+  2. MUST await `auth.authStateReady()` before any authorization decision; no polling fallback required (keep polling only behind a try/catch for limited SDK builds if retained).
+  3. MUST hide content during `INITIALIZING` (`gzDisplayLoading` hides `.gz-hero`/`.gz-page`) and reveal via `gzShowContent()` only after authorization is determined.
+  4. MUST surface technical failures as `ERROR` (no redirect-as-signed-out on error).
+  5. MUST deny deactivated admins (`active !== false` check).
+  6. MUST keep owner authority via immutable UID `hDbzbNTC7pOuU2UFCjFksopbgaG3`.
+- **Integration steps**: reconcile `agent/flint-20261121-002415` (`0578646`) with integration mainline; resolve conflicts in `ground-zero.js` and `tests/ground_zero_test.js`; run full master suite (target: 338 passed / 0 failed); push integration branch; trigger GitHub Pages deploy; verify live artifact contains no `FJGroundZero` named instance and includes `gzShowContent`.
+- **Live acceptance checks (post-deploy, real owner session required)**: owner opens `/ground-zero/` -> stays; refresh -> stays; dashboard loads via `GET /api/admin/accounts`; owner actions authorized; unauthorized user -> blocked; genuine errors shown as errors.
+- **Backend**: no Worker/Firestore rules change required for this fix; keep owner-only backend enforcement (`sub === OWNER_UID`, `email_verified`) intact. Handoff doc: `GROUND_ZERO_BACKEND_CONTRACT.md`.
