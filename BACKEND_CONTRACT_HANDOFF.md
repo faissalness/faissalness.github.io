@@ -62,6 +62,32 @@ behavior is unchanged. Verified in the emulator: active admin 40/40 checks pass 
 collection read; deactivated admin and ordinary user are denied. **Firestore rules must be
 re-deployed by the integration director** for this correction to take effect in production.
 
+## 0a. Live fix status and deployment block (2026-11-21)
+
+The redirect cause is fixed **in this branch** (commit `5552cd0`): `ground-zero.js`
+now uses `initializeApp(firebaseConfig)` (the shared default app) instead of the
+named `FJGroundZero` app, and adopts Flint's deterministic settlement/error handling.
+Flint's 52-check Ground Zero suite passes; full master suite is 387 passed / 0 failed.
+
+Browser reproduction before the fix: navigating to `/ground-zero/` emitted no CSP or
+network errors and immediately navigated to `/` (the page's own `redirectHome()`).
+With the corrected script and a synthetic verified owner in the Auth emulator, the
+browser stayed on `/ground-zero/` with content visible.
+
+**The live site is NOT fixed yet.** `https://faissalness.github.io/ground-zero.js`
+still contains `FJGroundZero` after this work. I attempted
+`gh workflow run 'Deploy FJ website' --ref agent/hy4-20261121-002415` (run
+`44850635234`); GitHub rejected it because the `github-pages` environment protection
+rules only allow deployments from `main`. Pushing to `main` is outside my authority
+under the parallel-execution contract.
+
+**Required integration action (exact):** merge
+`origin/agent/hy4-20261121-002415` (at minimum commits `5552cd0` for Ground Zero and
+`daac5f5` for CSP) into `main`, push `main`, then confirm the Pages workflow succeeds
+and verify the live `ground-zero.js` no longer contains `FJGroundZero` and that an
+owner session stays on `/ground-zero/`. No backend deployment is required for this
+specific symptom.
+
 ## 1. Identity and authority model
 
 | Principal | How the backend verifies it | Authority |

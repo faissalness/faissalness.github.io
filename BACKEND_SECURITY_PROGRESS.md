@@ -180,6 +180,24 @@ conditional investigation proceeded to the loaded page's authorization path.
 - No Worker code change was needed for the reported symptom. No security restriction was
   weakened; the grant is scoped to active admin records and excludes all admin mutation.
 
+## Fifth pass — Ground Zero blink fix (2026-11-21)
+
+- Reproduced in headless Chromium against production: navigating to `/ground-zero/`
+  produced **no CSP errors and no failed requests**; the page navigated to `/` from
+  its own JavaScript. The symptom is not a security-policy block.
+- Adopted Flint's corrected `ground-zero.js` (shared default Firebase app instance,
+  deterministic auth settlement, explicit ERROR state, content suppression). This
+  removes the named-app persistence namespace mismatch that hid the owner session.
+- Verified with a synthetic verified owner in the Auth emulator: with the corrected
+  script the browser stayed on `/ground-zero/` with content visible. Flint's 52-check
+  Ground Zero suite passes; full master suite **387 passed, 0 failed**.
+- Commit `5552cd0` pushed. Live deployment attempted via the existing Pages workflow
+  from this branch (run `44850635234`) but GitHub environment protection rules allow
+  the `github-pages` environment only from `main`. Live `ground-zero.js` still
+  contains `FJGroundZero`. Integration director must merge to `main` and deploy;
+  exact steps are in `BACKEND_CONTRACT_HANDOFF.md`. No production system was changed
+  by me.
+
 ## Identity
 
 - Branch: `agent/hy4-20261121-002415`
