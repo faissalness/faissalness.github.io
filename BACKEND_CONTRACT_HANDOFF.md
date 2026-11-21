@@ -48,13 +48,19 @@ document. The deployed `ground-zero.js` redirects from its own auth-state machin
 response. Frontend agents must fix the deployed artifact (shared default app instance) and render
 API errors in place; no backend change can make a document navigate.
 
-**Coordination issue for Flint/Iceman/Lightning:** `ground-zero.js` calls
-`getDocs(collection(db, "admins"))` to load the admin list. Current Firestore rules allow a
-non-owner admin to read only **their own** admin document, so that collection query fails for
-delegated admins and their frontend authorization collapses before any Worker call. This is a
-frontend-query/rules mismatch, not a Worker defect. I have not changed Firestore rules for it:
-fixing it requires an agreed rules change (or a per-UID `getDoc`) plus a rules deployment by the
-integration director. Do not solve it by weakening owner rules.
+**Demonstrated Firestore defect and correction (this pass):** `ground-zero.js` calls
+`getDocs(collection(db, "admins"))` to load the admin list. The previous rules allowed a
+non-owner admin to read only **their own** admin document, so that collection query failed for
+delegated admins and their frontend authorization collapsed before any Worker call. This was
+reproduced in the real Firestore emulator (active admin: own doc ALLOWED, collection DENIED).
+
+Corrected with the narrowest scoped grant: a new `activeAdmin()` rule helper reads the caller's
+own `admins/{uid}` document live and permits reading admin records only while `active === true`.
+Owner writes to `admins` remain exclusive; an active admin still cannot create, modify or delete
+admin records, and a deactivated admin loses read access immediately. Owner and ordinary-user
+behavior is unchanged. Verified in the emulator: active admin 40/40 checks pass including
+collection read; deactivated admin and ordinary user are denied. **Firestore rules must be
+re-deployed by the integration director** for this correction to take effect in production.
 
 ## 1. Identity and authority model
 

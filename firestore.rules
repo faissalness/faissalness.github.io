@@ -16,6 +16,16 @@ service cloud.firestore {
         && request.auth.uid == 'hDbzbNTC7pOuU2UFCjFksopbgaG3';
     }
 
+    function activeAdmin() {
+      // Delegated Ground Zero authority is granted only by an owner-written
+      // admin record that is still active. This is a live read on every rule
+      // evaluation, so deactivation takes effect immediately. It is never
+      // usable to write admin records or to bypass owner-only operations.
+      return signedIn()
+        && exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+        && get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.active == true;
+    }
+
     function authorizedNotesUser() {
       // The original Notes collection is exclusively the owner's application.
       // User-to-user administration belongs in separate per-user storage.
@@ -121,10 +131,12 @@ service cloud.firestore {
 
     // ADMINISTRATORS
     // Only the owner can create, activate, deactivate or delete admins.
-    // An administrator can read only their own admin record.
+    // The owner and active admins may read admin records; every other identity
+    // may read only its own record (which simply does not exist if not an admin).
     match /admins/{adminUid} {
       allow read: if owner()
-        || (signedIn() && request.auth.uid == adminUid);
+        || (signedIn() && request.auth.uid == adminUid)
+        || activeAdmin();
 
       allow create, update, delete: if owner();
     }

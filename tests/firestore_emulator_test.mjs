@@ -79,11 +79,16 @@ try {
 
   await environment.withSecurityRulesDisabled(async context => {
     await setDoc(doc(context.firestore(), 'admins', 'admin-a'), { uid: 'admin-a', active: true });
+    await setDoc(doc(context.firestore(), 'admins', 'admin-inactive'), { uid: 'admin-inactive', active: false });
     await setDoc(doc(context.firestore(), 'privateNotes', 'owner-secret'), { title: 'Owner private' });
     await setDoc(doc(context.firestore(), 'activeNotesSessions', 'hDbzbNTC7pOuU2UFCjFksopbgaG3'), {
       uid: 'hDbzbNTC7pOuU2UFCjFksopbgaG3', revoked: false, expiresAt: Timestamp.fromMillis(Date.now() + 60_000)
     });
   });
+  const inactiveAdmin = environment.authenticatedContext('admin-inactive', { email_verified: true }).firestore();
+  await check('Active admin can load the admin registry (Ground Zero admin list)', getDocs(collection(admin, 'admins')), assertSucceeds);
+  await check('Deactivated admin cannot load the admin registry', getDocs(collection(inactiveAdmin, 'admins')), assertFails);
+  await check('Ordinary user cannot load the admin registry', getDocs(collection(alice, 'admins')), assertFails);
   await check("Active admin cannot read owner's private Notes", getDoc(doc(admin, 'privateNotes', 'owner-secret')), assertFails);
   await check("Ordinary user cannot read owner's private Notes", getDoc(doc(alice, 'privateNotes', 'owner-secret')), assertFails);
   await check("Owner with a trusted active session can read private Notes", getDoc(doc(owner, 'privateNotes', 'owner-secret')), assertSucceeds);
@@ -129,8 +134,8 @@ try {
   await check('User can remove the lifecycle record after deletion becomes due', deleteDoc(accountPath), assertSucceeds);
   await check('Admin cannot create owner authorization records', setDoc(doc(admin, 'admins', 'admin-b'), { active: true }), assertFails);
 
-  console.log(`FIRESTORE EMULATOR: ${passed}/37 passed`);
-  assert.equal(passed, 37);
+  console.log(`FIRESTORE EMULATOR: ${passed}/40 passed`);
+  assert.equal(passed, 40);
 } finally {
   await environment.cleanup();
 }

@@ -86,7 +86,8 @@ existing test suite. Baseline Worker suite passed; baseline master suite was 325
 - `node tests/owner_approval_dashboard_test.js`, `node tests/website_audit_test.js`,
   `node tests/human_verification_test.js`, `node tests/note_crypto_test.mjs`,
   `node tests/qr_client_test.js` — all PASS.
-- `node tests/run_all_tests.js` — **373 passed, 0 failed, exit 0** across 16 suites.
+- `node tests/run_all_tests.js` — **375 passed, 0 failed, exit 0** across 16 suites (after the
+  final Firestore rule correction; was 373 before the two new simulator cases).
 - `node --check backend/worker.js`, `node --check functions/access-approval-trigger.js`,
   `node --check tests/backend_security_regression_test.js`, `node --check tests/fake_d1.js` — PASS.
 - `git diff --check` — PASS.
@@ -159,6 +160,25 @@ and `origin/agent/nemotron-super-vl-*`.
   Firestore and immediately revocable. Full matrix is in `BACKEND_CONTRACT_HANDOFF.md`.
 - No backend code defect was found that could cancel navigation or blank the page; no security
   restriction was removed. No frontend file was edited and no production system was changed.
+
+## Fourth pass — conditional backend investigation (2026-11-21)
+
+Navigation to `/ground-zero/` was proven first (document request 200, plain anchor), so the
+conditional investigation proceeded to the loaded page's authorization path.
+
+- Traced the three principal types through Firestore and the Worker using real locally signed
+  tokens and the real Firestore emulator (not only source-string tests):
+  - owner: admin registry read allowed; Worker owner checks pass.
+  - active admin: own admin doc readable, **admin collection read denied** — reproduced defect.
+  - deactivated admin / ordinary user: denied.
+- Corrected the precise backend defect in `firestore.rules`: added `activeAdmin()` (live read of
+  the caller's own admin doc) and allowed admin-record reads for active admins. Writes to
+  `admins` remain owner-only; deactivation is immediate; ordinary users unaffected.
+- Updated simulator model to match the real rules (test 19 now asserts the active-admin grant;
+  new tests 76/77 assert deactivated/ordinary denial). Firestore simulator 77/77; Firestore
+  emulator 40/40 including the new admin-registry cases.
+- No Worker code change was needed for the reported symptom. No security restriction was
+  weakened; the grant is scoped to active admin records and excludes all admin mutation.
 
 ## Identity
 

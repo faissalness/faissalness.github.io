@@ -96,6 +96,12 @@ class RulesSimulator {
       return status === "active" || status === "approved";
     };
 
+    const activeAdmin = () => {
+      if (!signedIn) return false;
+      const record = this.db.admins[auth.uid];
+      return Boolean(record) && record.active === true;
+    };
+
     const hasValidNotesSession = () => {
       if (!authorizedNotesUser()) return false;
       const session = this.db.activeNotesSessions[auth.uid];
@@ -106,7 +112,7 @@ class RulesSimulator {
     // 1. Administrators collection
     if (collection === 'admins') {
       if (operation === 'read') {
-        return owner || (signedIn && auth.uid === docId);
+        return owner || (signedIn && auth.uid === docId) || activeAdmin();
       }
       if (['create', 'update', 'delete'].includes(operation)) {
         return owner;
@@ -258,7 +264,7 @@ class RulesSimulator {
 
 const sim = new RulesSimulator(mockDb);
 let passedCount = 0;
-let totalCount = 75;
+let totalCount = 77;
 
 function runTest(num, name, condition) {
   assert.ok(condition, `Test ${num} FAILED: ${name}`);
@@ -328,8 +334,14 @@ runTest(18, "Admin reading own admin record -> ALLOWED",
   sim.evaluate({ auth: { uid: ADMIN_UID_ACTIVE }, path: `admins/${ADMIN_UID_ACTIVE}`, operation: "read" }) === true);
 
 // SECTION 4: ADMIN READ BOUNDARIES (Tests 19 - 21)
-runTest(19, "Admin reading other admin's record -> DENIED",
-  sim.evaluate({ auth: { uid: ADMIN_UID_ACTIVE }, path: `admins/${ADMIN_UID_REVOKED}`, operation: "read" }) === false);
+runTest(19, "Active admin can load the admin registry (Flint frontend collection query) -> ALLOWED",
+  sim.evaluate({ auth: { uid: ADMIN_UID_ACTIVE }, path: `admins/${ADMIN_UID_REVOKED}`, operation: "read" }) === true);
+
+runTest(76, "Deactivated admin cannot read other admin records -> DENIED",
+  sim.evaluate({ auth: { uid: ADMIN_UID_REVOKED }, path: `admins/${ADMIN_UID_ACTIVE}`, operation: "read" }) === false);
+
+runTest(77, "Ordinary user cannot read an admin record through the delegated-admin grant -> DENIED",
+  sim.evaluate({ auth: { uid: USER_UID }, path: `admins/${ADMIN_UID_ACTIVE}`, operation: "read" }) === false);
 
 runTest(20, "Anonymous reading admin record -> DENIED",
   sim.evaluate({ auth: null, path: `admins/${ADMIN_UID_ACTIVE}`, operation: "read" }) === false);
@@ -524,4 +536,4 @@ runTest(74, "Owner deletes a user account whose Your Notes are not deletion-read
   })());
 
 console.log(`\n=== FIRESTORE RULES VERIFICATION RESULT: ${passedCount} / ${totalCount} PASSED ===`);
-assert.strictEqual(passedCount, 75, "All 75 Firestore rules simulator cases must pass!");
+assert.strictEqual(passedCount, 77, "All 77 Firestore rules simulator cases must pass!");

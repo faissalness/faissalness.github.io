@@ -10,7 +10,7 @@ console.log("          FJ WEBSITE MASTER TEST SUITE RUNNER             ");
 console.log("==========================================================\n");
 
 const suites = [
-  { name: "Firestore Rules Logic Simulator (75 Cases)", cmd: "node tests/firestore_security_rules_test.js", expectedTests: 75 },
+  { name: "Firestore Rules Logic Simulator (77 Cases)", cmd: "node tests/firestore_security_rules_test.js", expectedTests: 77 },
   { name: "Ground Zero 00 Control Center Suite", cmd: "node tests/ground_zero_test.js", expectedTests: 41 },
   { name: "Workflow and Access Trigger Security Suite", cmd: "node tests/workflow_test.js", expectedTests: 5 },
   { name: "Registration Suffix Authorization Regression", cmd: "node tests/auth_suffix_security_test.js", expectedTests: 4 },
@@ -55,7 +55,7 @@ results.forEach(r => {
 console.log("----------------------------------------------------------");
 console.log(`TOTAL TESTS PASSED: ${totalPassed}`);
 console.log(`TOTAL TESTS FAILED: ${totalFailed}`);
-console.log(`FIRESTORE RULE SIMULATOR CASES: 75 / 75 EXPECTED`);
+console.log(`FIRESTORE RULE SIMULATOR CASES: 77 / 77 EXPECTED`);
 console.log("==========================================================");
 
 if (totalFailed > 0) {
