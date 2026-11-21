@@ -3,8 +3,63 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <base href="/">
   <meta name="theme-color" content="#020203">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; script-src 'self' https://www.gstatic.com; connect-src 'self' https://www.gstatic.com https://fj-api.jimyass.workers.dev https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com wss://firestore.googleapis.com https://www.googleapis.com; img-src 'self' data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; frame-src 'self' https://fj-website-384fd.firebaseapp.com; base-uri 'self'; object-src 'none'; form-action 'self'; script-src 'self' https://www.gstatic.com; connect-src 'self' https://fj-api.jimyass.workers.dev https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com wss://firestore.googleapis.com https://www.googleapis.com https://www.gstatic.com https://firebaseinstallations.googleapis.com https://fj-website-384fd.firebaseapp.com; img-src 'self' data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  <meta name="description" content="FJ — Ground Zero 00: owner and authorized admin control center.">
+  <title>Ground Zero 00 — FJ</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css?v=20261126-1">
+</head>
+<body class="site-body">
+  <header class="topbar">
+    <a class="site-mark" href="/" aria-label="FJ home">FJ</a>
+    <nav class="site-nav" aria-label="FJ pages">
+      <a href="/ground-zero/" aria-current="page">Ground Zero 00</a>
+      <a href="/meet/">Meet me <span>01</span></a>
+      <a href="/gods/">To the gods <span>02</span></a>
+      <a href="/notes/">Notes <span>03</span></a>
+      <a href="/pip/">PIP + Notes <span>04</span></a>
+      <a href="/qr/">QR-tech <span>05</span></a>
+    </nav>
+  </header>
+  <main class="gz-page">
+    <p id="gz-status" class="gz-status" role="status" aria-live="polite" hidden></p>
+    <section class="gz-hero">
+      <p class="eyebrow">FJ / GROUND ZERO 00 — OWNER & ADMIN CONTROL CENTER</p>
+      <h1>Ground Zero <span>00</span></h1>
+      <p class="gz-sub">Approvals, revocations, suspension and account management — enforced by the backend.</p>
+    </section>
+    <section class="gz-card">
+      <h2>Authorized Admins</h2>
+      <p class="gz-sub">The owner authorizes admins here; authorized admins can enter Ground Zero.</p>
+      <form id="gz-admin-form" class="gz-admin-form">
+        <label for="gz-admin-uid">Admin UID</label>
+        <input id="gz-admin-uid" type="text" placeholder="user UID" autocomplete="off" required>
+        <label for="gz-admin-email">Admin Email (optional)</label>
+        <input id="gz-admin-email" type="email" placeholder="admin@example.com" autocomplete="off">
+        <button class="primary-button compact-btn" type="submit">Authorize Admin</button>
+      </form>
+      <div id="gz-admins-list" class="gz-admins-list" aria-label="Authorized admins"></div>
+    </section>
+    <section class="gz-card">
+      <div class="gz-search-row">
+        <label for="gz-search">Search accounts by email, UID, or name</label>
+        <input id="gz-search" type="search" autocomplete="off" placeholder="Search accounts…">
+        <button id="gz-refresh" type="button" class="text-button">Refresh ↻</button>
+      </div>
+      <div id="gz-accounts-scroll" class="gz-accounts-scroll">
+        <table id="gz-accounts-table" class="gz-accounts-table" aria-label="Registered accounts and permission states"></table>
+        <p id="gz-empty" class="gz-empty" hidden>No accounts match the current search.</p>
+        <p id="gz-accounts-note" class="gz-sub">Website authorization (main site) is separate from PIP/Notes authorization; both are enforced by the backend and Firestore rules.</p>
+      </div>
+    </section>
+  </main>
+  <script type="module" src="ground-zero.js?v=20261126-1"></script>
+</body>
+</html>
+ img-src 'self' data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com">
   <meta name="referrer" content="strict-origin-when-cross-origin">
   <meta name="description" content="FJ — Ground Zero 00: owner and authorized admin control center.">
   <title>Ground Zero 00 — FJ</title>

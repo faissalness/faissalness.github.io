@@ -5,9 +5,6 @@ import { firebaseConfig } from "./firebase-config.js";
 import { decryptNotePayload, encryptNotePayload } from "./note-crypto.mjs";
 
 const $ = selector => document.querySelector(selector);
-// Use the shared default Firebase app instance. Auth persistence is scoped by
-// app name, so a named instance cannot see the owner/user session restored by
-// the main website (or by Notes and Meet/Gods). This was the redirect cause.
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
@@ -395,9 +392,7 @@ $("#pip-profile-search").addEventListener("submit", async event => {
       row.append(createProfileAvatar(profile.uid, profile.displayName));
       addTextNode(row, profile.displayName || "PIP profile", "pip-note-row-title");
       row.addEventListener("click", async () => {
-        $("#pip-pal-uid").value = profile.uid || "";
-        $("#pip-pal-email").focus();
-        status(`${profile.displayName || "Profile"} selected. Enter their PIP email to send the invitation.`, "info");
+        status(`${profile.displayName || "Profile"} selected. Ask for their PIP email to send an invitation.`, "info");
       });
       results.append(row);
     }
@@ -410,8 +405,7 @@ $("#pip-pal-invite-form").addEventListener("submit", async event => {
   button.disabled = true;
   try {
     const email = $("#pip-pal-email").value.trim();
-    const uid = $("#pip-pal-uid").value.trim();
-    const result = await palApi("/api/pals/invite", { method: "POST", body: JSON.stringify({ email, uid }) });
+    const result = await palApi("/api/pals/invite", { method: "POST", body: JSON.stringify({ email }) });
     status(result.message, "success");
     event.currentTarget.reset();
     await refreshPalExperience();
@@ -812,7 +806,7 @@ async function showPrivateNotes(user) {
       pendingApprovalTimer = setInterval(() => {
         palApi("/api/users/register", { method: "POST", body: "{}" })
           .then(registrationResult => {
-            if (registrationResult.status === "active" && registrationResult.pipStatus === "active") {
+            if (registrationResult.status === "active") {
               stopPendingApprovalPoll();
               showPrivateNotes(user);
             }
@@ -857,40 +851,12 @@ async function showPrivateNotes(user) {
 }
 
 // PIP and Your Notes use the main FJ website session only — there is no
-// second login. Wait for the official auth-settlement signal before deciding,
-// never disguise a technical error as a signed-out state, and keep the page
-// hidden while INITIALIZING so it cannot flash before the decision.
-let pipAuthState = "INITIALIZING";
-
-function pipHideContent() {
-  $("#pip-auth").hidden = true;
-  $("#pip-notes").hidden = true;
-}
-
-function pipShowError(message) {
-  pipAuthState = "ERROR";
-  $("#pip-auth").hidden = false;
-  status(message, "error");
-}
-
-async function pipWaitForAuthSettled() {
-  try { await auth.authStateReady(); } catch (_) { /* listener already settled */ }
-}
-
-onAuthStateChanged(auth, async user => {
-  pipHideContent();
-  await pipWaitForAuthSettled();
+// second login. Users sign in through the main website; unauthenticated
+// sessions are sent back there.
+onAuthStateChanged(auth, user => {
   if (!user) {
-    // Auth has settled: there is genuinely no restored session on the shared app.
-    pipAuthState = "UNAUTHORIZED";
-    window.location.replace("/");
+    window.location.href = "/";
     return;
   }
-  pipAuthState = "AUTHENTICATED";
-  try {
-    await showPrivateNotes(user);
-    pipAuthState = "AUTHORIZED";
-  } catch (error) {
-    pipShowError(error?.message || "PIP could not verify access. Please retry.");
-  }
-}, error => pipShowError(`PIP access check failed: ${error?.message || "unknown error"}`));
+  showPrivateNotes(user);
+});

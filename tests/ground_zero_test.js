@@ -86,10 +86,8 @@ const pipJs = fs.readFileSync(path.join(ROOT, 'pip.js'), 'utf8');
 for (const removed of ['pip-login-form', 'pip-register-form', 'pip-returning', 'pip-switch-account', 'pip-reset']) {
   check(`PIP has no "${removed}"`, !pipHtml.includes(`id="${removed}"`));
 }
-check('PIP redirects settled unauthenticated users to the main website', pipJs.includes('window.location.replace("/")'));
-check('PIP waits for deterministic auth settlement before deciding', pipJs.includes('auth.authStateReady()') && pipJs.includes('let pipAuthState = "INITIALIZING"'));
-check('PIP uses the shared default Firebase app instance', pipJs.includes('const app = initializeApp(firebaseConfig);') && !pipJs.includes('initializeApp(firebaseConfig,'));
-check('PIP surfaces technical auth errors instead of redirecting as signed-out', pipJs.includes('pipShowError('));
+check('PIP redirects unauthenticated users to the main website', pipJs.includes('window.location.href = "/"'));
+check('PIP + Notes use the shared default Firebase app instance', pipJs.includes('const app = initializeApp(firebaseConfig);') && !pipJs.includes('initializeApp(firebaseConfig, "FJYourNotes")'));
 check('PIP page copy says authentication happens on the main website', pipHtml.includes('Users authenticate on the main FJ website'));
 check('Notes has no neon gate or second login', !notesHtml.includes('unauthorized-gate') && !notesHtml.includes('notes-gate-password'));
 const notesJs = fs.readFileSync(path.join(ROOT, 'notes.js'), 'utf8');

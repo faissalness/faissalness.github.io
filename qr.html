@@ -4,7 +4,31 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#020203">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; script-src 'self' https://www.gstatic.com; connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com wss://firestore.googleapis.com https://firebasestorage.googleapis.com https://www.googleapis.com https://en.wikipedia.org https://www.gstatic.com; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; frame-src 'self' https://fj-website-384fd.firebaseapp.com; base-uri 'self'; object-src 'none'; form-action 'self'; script-src 'self' https://www.gstatic.com; connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com wss://firestore.googleapis.com https://firebasestorage.googleapis.com https://www.googleapis.com https://en.wikipedia.org https://www.gstatic.com https://firebaseinstallations.googleapis.com https://fj-website-384fd.firebaseapp.com; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  <meta name="description" content="QR-tech 05 — a QR code linking to Alain Tourret.">
+  <title>QR-tech 05 — FJ</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css?v=20261118-1">
+</head>
+<body class="site-body qr-tech-body">
+  <header class="topbar">
+      <a class="site-mark" href="/" aria-label="FJ home">FJ</a>
+    <nav class="site-nav" aria-label="FJ pages">
+      <a href="/meet/">Meet me <span>01</span></a>
+      <a href="/gods/">To the gods <span>02</span></a>
+      <a href="/notes/">Notes <span>03</span></a>
+      <a href="/pip/">PIP + Notes <span>04</span></a>
+      <a href="/qr/" aria-current="page">QR-tech <span>05</span></a>
+    </nav>
+  </header>
+  <main class="qr-tech-page">
+    <img id="qr-tech-image" class="qr-tech-image" alt="QR code linking to https://en.wikipedia.org/wiki/Alain_Tourret" width="600" height="600" hidden>
+  </main>
+  <script type="module" src="qr-tech.js?v=20261118-1"></script>
+</body>
+</html>
+ img-src 'self' data: blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com">
   <meta name="referrer" content="strict-origin-when-cross-origin">
   <meta name="description" content="QR-tech 05 — a QR code linking to Alain Tourret.">
   <title>QR-tech 05 — FJ</title>
