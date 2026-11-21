@@ -54,6 +54,22 @@ HTML_FILES.forEach(file => {
 passedAudits++;
 console.log(" PASS: Mobile responsiveness viewport and theme metadata verified.");
 
+// Firebase ESM modules are loaded from www.gstatic.com under script-src, and
+// Chrome fetches their optional sourceMappingURL files as connections. The
+// source-map origin must therefore also be allowed by connect-src on the pages
+// that load those modules; no other CSP directive change is required.
+const FIREBASE_MODULE_PAGES = ['index.html', 'ground-zero.html', 'notes.html', 'pip.html', 'meet.html', 'gods.html'];
+assert.ok(FIREBASE_MODULE_PAGES.every(file => {
+  const content = fs.readFileSync(path.join(ROOT, file), 'utf8');
+  const csp = content.match(/content="(default-src[^"]+)"/)?.[1] || '';
+  const directives = csp.split(';').map(part => part.trim());
+  const connect = directives.find(part => part.startsWith('connect-src')) || '';
+  const script = directives.find(part => part.startsWith('script-src')) || '';
+  return script.includes('https://www.gstatic.com') && connect.includes('https://www.gstatic.com');
+}), 'Firebase module pages must allow www.gstatic.com in both script-src and connect-src (source maps)');
+passedAudits++;
+console.log(" PASS: Firebase module and source-map origins are permitted by CSP.");
+
 // 3. Verify Static Assets (qr.png, favicon.svg, styles.css)
 console.log("\n3. Checking Core Static Assets...");
 assert.ok(fs.existsSync(path.join(ROOT, 'qr.png')), "qr.png must exist in root");
