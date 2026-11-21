@@ -38,7 +38,7 @@ for (const file of ['index.html', 'notes.html', 'pip.html']) {
 }
 
 console.log("\n3. Owner/admin-exclusive access");
-check('Ground Zero redirects unauthenticated visitors to the main website', groundZeroJs.includes('window.location.href = "/"'));
+check('Ground Zero shows auth gate instead of silent redirect', groundZeroJs.includes('showAuthGate'));
 check('Ground Zero allows the owner by the immutable UID', groundZeroJs.includes('gzUser.uid === ownerUid') && groundZeroJs.includes('admins.has(gzUser.uid)'));
 check('Ground Zero reads the admins collection for authorized admins', groundZeroJs.includes('collection(db, "admins")'));
 check('Main site reveals Ground Zero 00 for the owner and authorized admins', appJs.includes('#gz-nav') && appJs.includes('getDoc(doc(db, "admins", user.uid))'));
@@ -74,7 +74,7 @@ const pipJs = fs.readFileSync(path.join(ROOT, 'pip.js'), 'utf8');
 for (const removed of ['pip-login-form', 'pip-register-form', 'pip-returning', 'pip-switch-account', 'pip-reset']) {
   check(`PIP has no "${removed}"`, !pipHtml.includes(`id="${removed}"`));
 }
-check('PIP redirects unauthenticated users to the main website', pipJs.includes('window.location.href = "/"'));
+check('PIP shows auth gate instead of silent redirect', pipJs.includes('pipShowAuthGate'));
 check('PIP page copy says authentication happens on the main website', pipHtml.includes('Users authenticate on the main FJ website'));
 check('Notes has no neon gate or second login', !notesHtml.includes('unauthorized-gate') && !notesHtml.includes('notes-gate-password'));
 const notesJs = fs.readFileSync(path.join(ROOT, 'notes.js'), 'utf8');

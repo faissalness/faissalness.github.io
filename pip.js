@@ -5,7 +5,7 @@ import { firebaseConfig } from "./firebase-config.js";
 import { decryptNotePayload, encryptNotePayload } from "./note-crypto.mjs";
 
 const $ = selector => document.querySelector(selector);
-const app = initializeApp(firebaseConfig, "FJYourNotes");
+const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 if (location.hostname === "127.0.0.1") {
@@ -849,10 +849,57 @@ async function showPrivateNotes(user) {
 // PIP and Your Notes use the main FJ website session only — there is no
 // second login. Users sign in through the main website; unauthenticated
 // sessions are sent back there.
-onAuthStateChanged(auth, user => {
-  if (!user) {
-    window.location.href = "/";
+// PIP and Your Notes use the main FJ website session only — there is no
+// second login. Users sign in through the main website; unauthenticated
+// sessions are sent back there. Never redirect before auth-state settlement
+// (INITIALIZING); wait for auth.authStateReady() then show a gate instead of
+// flashing content and redirecting.
+let pipAuthSettled = false;
+function pipShowLoading() {
+  const authSection = $("#pip-auth");
+  const notesSection = $("#pip-notes");
+  if (authSection) authSection.hidden = true;
+  if (notesSection) notesSection.hidden = true;
+  $("#pip-status").textContent = "Verifying access to PIP and Your Notes…";
+  $("#pip-status").hidden = false;
+}
+function pipShowAuthGate() {
+  const authSection = $("#pip-auth");
+  const notesSection = $("#pip-notes");
+  if (authSection) authSection.hidden = false;
+  if (notesSection) notesSection.hidden = true;
+  $("#pip-status").hidden = true;
+}
+function pipShowDashboard(user) {
+  const authSection = $("#pip-auth");
+  const notesSection = $("#pip-notes");
+  if (authSection) authSection.hidden = true;
+  if (notesSection) notesSection.hidden = false;
+  $("#pip-status").hidden = true;
+  showPrivateNotes(user);
+}
+onAuthStateChanged(auth, async user => {
+  pipShowLoading();
+  if (user) {
+    pipAuthSettled = true;
+    pipShowDashboard(user);
     return;
   }
-  showPrivateNotes(user);
+  // No user yet: never redirect during INITIALIZING. Wait for auth-state
+  // settlement via the official API (auth.authStateReady()), then re-check.
+  try {
+    await auth.authStateReady();
+  } catch (_) {
+    // Older/limited SDKs: fall back to polling the current user.
+    for (let attempt = 0; attempt < 10 && !auth.currentUser; attempt += 1) {
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
+  }
+  pipAuthSettled = true;
+  const settledUser = auth.currentUser;
+  if (!settledUser) {
+    pipShowAuthGate();
+    return;
+  }
+  pipShowDashboard(settledUser);
 });
