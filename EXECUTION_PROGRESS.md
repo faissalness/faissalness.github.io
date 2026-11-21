@@ -397,3 +397,11 @@ This is the newest status and supersedes earlier statements above where they con
 
 - **Keep unresolved**: Ground Zero must remain FAILED until production navigation and actual authorized access are verified (unchanged by this CSP fix).
 
+
+### PIP + Notes 04 loading failure fix - 2026-11-21 (FLINT - CONTINUE EXISTING WORK)
+
+- **Instruction received**: PIP + Notes 04 not loading on subsequent visits by all users after logging back in; find and fix.
+- **Root cause**: `pip.js` initialized a second Firebase app instance with a custom name, `initializeApp(firebaseConfig, "FJYourNotes")`, while `app.js`, `private-page.js`, `notes.js`, and `ground-zero.js` already used the shared default instance. Because Firebase scopes auth persistence per app name, the PIP + Notes page never saw the session created via the main-site default app; after logging back in, the `onAuthStateChanged` handler saw no user and redirected to `/` — so the page did not load.
+- **Fix applied**: switched `pip.js` to the shared default instance (`const app = initializeApp(firebaseConfig);`). Same proven defect class as the Ground Zero `FJGroundZero` fix.
+- **Regression coverage**: added check that PIP + Notes use the shared default Firebase app instance (no custom name); Ground Zero suite now 53 checks; full master suite 345 passed / 0 failed.
+

@@ -87,6 +87,7 @@ for (const removed of ['pip-login-form', 'pip-register-form', 'pip-returning', '
   check(`PIP has no "${removed}"`, !pipHtml.includes(`id="${removed}"`));
 }
 check('PIP redirects unauthenticated users to the main website', pipJs.includes('window.location.href = "/"'));
+check('PIP + Notes use the shared default Firebase app instance', pipJs.includes('const app = initializeApp(firebaseConfig);') && !pipJs.includes('initializeApp(firebaseConfig, "FJYourNotes")'));
 check('PIP page copy says authentication happens on the main website', pipHtml.includes('Users authenticate on the main FJ website'));
 check('Notes has no neon gate or second login', !notesHtml.includes('unauthorized-gate') && !notesHtml.includes('notes-gate-password'));
 const notesJs = fs.readFileSync(path.join(ROOT, 'notes.js'), 'utf8');

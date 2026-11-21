@@ -5,7 +5,7 @@ import { firebaseConfig } from "./firebase-config.js";
 import { decryptNotePayload, encryptNotePayload } from "./note-crypto.mjs";
 
 const $ = selector => document.querySelector(selector);
-const app = initializeApp(firebaseConfig, "FJYourNotes");
+const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 if (location.hostname === "127.0.0.1") {
