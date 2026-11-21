@@ -44,8 +44,8 @@ console.log("\n2. Checking Viewport and Theme-Color Metadata...");
 HTML_FILES.forEach(file => {
   const content = fs.readFileSync(path.join(ROOT, file), 'utf8');
   assert.ok(content.includes('<meta name="viewport"'), `${file} must contain mobile viewport tag`);
-  assert.ok(content.includes('http-equiv="Content-Security-Policy"') && content.includes("object-src 'none'") && content.includes("https://fonts.googleapis.com"),
-    `${file} must include a CSP that blocks object embedding and permits only required font sources`);
+  assert.ok(!/http-equiv="Content-Security-Policy"/i.test(content),
+    `${file} must not carry an inline Content-Security-Policy meta tag`);
   if (file !== 'random.html') {
     assert.ok(content.includes('<meta name="theme-color" content="#020203">'), `${file} must contain theme-color meta tag`);
   }
@@ -54,21 +54,13 @@ HTML_FILES.forEach(file => {
 passedAudits++;
 console.log(" PASS: Mobile responsiveness viewport and theme metadata verified.");
 
-// Firebase ESM modules are loaded from www.gstatic.com under script-src, and
-// Chrome fetches their optional sourceMappingURL files as connections. The
-// source-map origin must therefore also be allowed by connect-src on the pages
-// that load those modules; no other CSP directive change is required.
-const FIREBASE_MODULE_PAGES = ['index.html', 'ground-zero.html', 'notes.html', 'pip.html', 'meet.html', 'gods.html'];
-assert.ok(FIREBASE_MODULE_PAGES.every(file => {
-  const content = fs.readFileSync(path.join(ROOT, file), 'utf8');
-  const csp = content.match(/content="(default-src[^"]+)"/)?.[1] || '';
-  const directives = csp.split(';').map(part => part.trim());
-  const connect = directives.find(part => part.startsWith('connect-src')) || '';
-  const script = directives.find(part => part.startsWith('script-src')) || '';
-  return script.includes('https://www.gstatic.com') && connect.includes('https://www.gstatic.com');
-}), 'Firebase module pages must allow www.gstatic.com in both script-src and connect-src (source maps)');
+// The site does not use inline CSP meta tags. Resource policy is enforced by
+// the service/backend configuration instead, so no page may carry a duplicated
+// Content-Security-Policy meta directive.
+assert.ok(HTML_FILES.every(file => !/Content-Security-Policy/i.test(fs.readFileSync(path.join(ROOT, file), 'utf8'))),
+  'No public page may contain an inline Content-Security-Policy meta tag');
 passedAudits++;
-console.log(" PASS: Firebase module and source-map origins are permitted by CSP.");
+console.log(" PASS: No duplicated inline CSP meta directives in public pages.");
 
 // 3. Verify Static Assets (qr.png, favicon.svg, styles.css)
 console.log("\n3. Checking Core Static Assets...");

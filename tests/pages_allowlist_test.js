@@ -27,12 +27,12 @@ assert.ok(workflow.includes('cp -- pip.html dist/pip/index.html') && workflow.in
   'The PIP and QR clean routes must be included in the published artifact');
 
 const publicPages = ['index.html', 'meet.html', 'gods.html', 'notes.html', 'random.html', 'qr.html', 'pip.html', 'ground-zero.html'];
-const allPublicPagesCsp = publicPages.map(file => fs.readFileSync(path.join(root, file), 'utf8')).join('\n');
-assert.ok(allPublicPagesCsp.includes("script-src 'self' https://www.gstatic.com"),
-  'Published CSP must allow the Firebase SDK script source from gstatic');
-assert.ok(allPublicPagesCsp.includes('https://firebaseinstallations.googleapis.com'),
-  'Published CSP connect-src must allow the Firebase Installations API');
-assert.ok(allPublicPagesCsp.includes('https://fj-website-384fd.firebaseapp.com'),
-  'Published CSP must allow the Firebase Auth handler origin');
+const allPublicPagesHtml = publicPages.map(file => fs.readFileSync(path.join(root, file), 'utf8')).join('\n');
+assert.ok(!allPublicPagesHtml.includes('Content-Security-Policy'),
+  'Published pages must not carry inline CSP meta tags');
+assert.ok(!allPublicPagesHtml.includes('img-src'),
+  'Published pages must not carry duplicated img-src CSP directives');
+assert.ok(!allPublicPagesHtml.includes('font-src'),
+  'Published pages must not carry duplicated font-src CSP directives');
 
 console.log('=== PAGES PUBLIC ARTIFACT ALLOWLIST: 8 / 8 PASSED ===');
