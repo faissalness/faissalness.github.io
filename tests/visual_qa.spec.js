@@ -34,6 +34,7 @@ let origin;
 test.beforeAll(async () => {
   staticServer = http.createServer((request, response) => {
     const pathname = new URL(request.url, 'http://127.0.0.1').pathname;
+    const clean = pathname.replace(/\/+$/, '') || '/';
     const routeMap = {
       '/': 'index.html',
       '/ground-zero/': 'ground-zero.html',
@@ -45,7 +46,12 @@ test.beforeAll(async () => {
     };
     let file;
     if (routeMap[pathname]) file = path.resolve(root, routeMap[pathname]);
-    else file = path.resolve(root, pathname.replace(/\/+$/, '').slice(1) || 'index.html');
+    else {
+      const candidate = clean === '/' ? 'index.html' : clean.slice(1);
+      // Try root first, then tests/ subdirectory for QA fixtures
+      file = path.resolve(root, candidate);
+      if (!fs.existsSync(file)) file = path.resolve(root, 'tests', candidate);
+    }
     if (!file.startsWith(`${root}${path.sep}`) || !fs.existsSync(file) || !fs.statSync(file).isFile()) {
       response.writeHead(404).end();
       return;
@@ -162,5 +168,53 @@ test('live Ground Zero redirects unauthenticated visitors without a redirect loo
   console.log(`[live/ground-zero] final path: ${finalPath}, redirected home: ${redirectedHome}, dashboard visible: ${dashboardVisible}`);
   expect(pageErrors).toEqual([]);
   expect(dashboardVisible).toBe(false);
+  await context.close();
+});
+
+test('PIP editor heading has no horizontal overflow at mobile width', async ({ browser }) => {
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const page = await context.newPage();
+  const response = await page.goto(`${origin}/pip-editor-overflow-test.html`, { waitUntil: 'load' });
+  expect(response.status()).toBe(200);
+
+  // Check the editor heading container (with delete button visible) does not overflow
+  const headingOverflow = await page.locator('#heading-overflow').evaluate(el => {
+    const parent = el.parentElement;
+    const heading = parent.querySelector('.pip-editor-heading');
+    const headingOverflow = heading ? heading.scrollWidth > heading.clientWidth + 1 : false;
+    console.log(`[heading] parent scrollWidth=${parent.scrollWidth} clientWidth=${parent.clientWidth}, heading scrollWidth=${heading ? heading.scrollWidth : 'N/A'} clientWidth=${heading ? heading.clientWidth : 'N/A'}`);
+    return parent.scrollWidth > parent.clientWidth + 1 || headingOverflow;
+  });
+  expect(headingOverflow).toBe(false);
+
+  // Check the password row container does not overflow
+  const passwordOverflow = await page.locator('#password-overflow').evaluate(el => {
+    const parent = el.parentElement;
+    const row = parent.querySelector('.pip-note-password-row');
+    const rowOverflow = row ? row.scrollWidth > row.clientWidth + 1 : false;
+    console.log(`[password-row] parent scrollWidth=${parent.scrollWidth} clientWidth=${parent.clientWidth}, row scrollWidth=${row ? row.scrollWidth : 'N/A'} clientWidth=${row ? row.clientWidth : 'N/A'}`);
+    return parent.scrollWidth > parent.clientWidth + 1 || rowOverflow;
+  });
+  expect(passwordOverflow).toBe(false);
+
+  await page.screenshot({ path: 'tests/screenshots/pip-editor-overflow-mobile.png', fullPage: true });
+  await context.close();
+});
+
+test('PIP editor new-note state has no horizontal overflow at mobile width', async ({ browser }) => {
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const page = await context.newPage();
+  const response = await page.goto(`${origin}/pip-editor-overflow-test.html`, { waitUntil: 'load' });
+  expect(response.status()).toBe(200);
+
+  const headingOverflow = await page.locator('#heading-new-overflow').evaluate(el => {
+    const parent = el.parentElement;
+    const heading = parent.querySelector('.pip-editor-heading');
+    const headingOverflow = heading ? heading.scrollWidth > heading.clientWidth + 1 : false;
+    console.log(`[heading-new] parent scrollWidth=${parent.scrollWidth} clientWidth=${parent.clientWidth}, heading scrollWidth=${heading ? heading.scrollWidth : 'N/A'} clientWidth=${heading ? heading.clientWidth : 'N/A'}`);
+    return parent.scrollWidth > parent.clientWidth + 1 || headingOverflow;
+  });
+  expect(headingOverflow).toBe(false);
+
   await context.close();
 });
